@@ -20,6 +20,7 @@ export enum SystemRole {
   SUPER_ADMIN = 'super_admin',
   OWNER = 'owner',
   EMPLOYEE = 'employee',
+  USER = 'user',
 }
 
 @Entity('users')
@@ -29,7 +30,7 @@ export enum SystemRole {
   `(
     ("system_role" = 'employee' AND "shop_id" IS NOT NULL)
     OR
-    ("system_role" IN ('owner', 'super_admin') AND "shop_id" IS NULL)
+    ("system_role" IN ('user', 'owner', 'super_admin') AND "shop_id" IS NULL)
   )`,
 )
 export class User {
@@ -75,7 +76,7 @@ export class User {
     name: 'system_role',
     type: 'enum',
     enum: SystemRole,
-    default: SystemRole.EMPLOYEE,
+    default: SystemRole.USER,
   })
   systemRole!: SystemRole;
 
