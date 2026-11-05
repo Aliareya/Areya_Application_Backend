@@ -1,54 +1,72 @@
-
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToOne,
   OneToMany,
   JoinColumn,
+  CreateDateColumn,
   Unique,
 } from 'typeorm';
 
-import { Workshop } from '../../../api/workshops/entities/workshop.entity';
-import { User } from '../../../api/users/entities/user.entity';
-import { RolePermission } from '../../../api/permissions/entities/role-permission.entity';
+import { Shop } from '../../shops/entities/shop.entity';
+import { RolePermission } from './role-permission.entity';
+import { UserRole } from '../../../api/users/entities/user-role.entity';
 
 @Entity('roles')
-@Unique('UQ_roles_workshop_slug', ['workshop', 'slug'])
+@Unique('uq_roles_shop_slug', ['shopId', 'slug'])
+@Unique('uq_roles_id_shop', ['id', 'shopId'])
 export class Role {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id!: string;
 
-  @Column({ length: 100 })
-  name!: string;
+  // Shop ID
+  @Column({
+    name: 'shop_id',
+    type: 'bigint',
+  })
+  shopId!: string;
 
-  @Column({ length: 100 })
-  slug!: string;
-
-  @Column({ type: 'text', nullable: true })
-  description!: string | null;
-
-  @ManyToOne(() => Workshop, (workshop) => workshop.roles, {
-    nullable: false,
+  // Shop Relation
+  @ManyToOne(() => Shop, (shop) => shop.roles, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'workshop_id' })
-  workshop!: Workshop;
+  @JoinColumn({ name: 'shop_id' })
+  shop!: Shop;
 
-  @OneToMany(() => User, (user) => user.roleEntity)
-  users!: User[];
+  // Role Name
+  @Column({
+    type: 'varchar',
+    length: 100,
+  })
+  name!: string;
 
-  @OneToMany(
-    () => RolePermission,
-    (rolePermission) => rolePermission.role,
-  )
+  // Role Slug
+  @Column({
+    type: 'varchar',
+    length: 100,
+  })
+  slug!: string;
+
+  // Description
+  @Column({
+    type: 'text',
+    nullable: true,
+  })
+  description!: string | null;
+
+  // Users Assigned to This Role
+  @OneToMany(() => UserRole, (userRole) => userRole.role)
+  userRoles!: UserRole[];
+
+  // Role Permissions
+  @OneToMany(() => RolePermission, (rolePermission) => rolePermission.role)
   rolePermissions!: RolePermission[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  // Created At
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+  })
   createdAt!: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt!: Date;
 }
