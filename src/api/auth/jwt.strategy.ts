@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -20,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (request: Request) => request?.cookies?.access_token,
+        (request: Request) => request?.cookies?.areya_access,
       ]),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
@@ -28,18 +25,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(
-    request: Request,
-    payload: { sub: string },
-  ) {
-    const token = request.cookies?.access_token;
+  async validate(request: Request, payload: { sub: string }) {
+    const token = request.cookies?.areya_access;
 
     if (!token) {
       throw new UnauthorizedException('Authentication required');
     }
 
-    const isRevoked =
-      await this.revokedTokensService.isRevoked(token);
+    const isRevoked = await this.revokedTokensService.isRevoked(token);
 
     if (isRevoked) {
       throw new UnauthorizedException('Token has been revoked');

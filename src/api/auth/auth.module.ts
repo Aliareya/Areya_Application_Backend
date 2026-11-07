@@ -10,6 +10,7 @@ import { RevokedToken } from './entities/revoked-token.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RevokedTokensService } from './revoked-tokens.service';
 import { PassportModule } from '@nestjs/passport';
+import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { PassportModule } from '@nestjs/passport';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RevokedTokensService],
+  providers: [AuthService, RevokedTokensService,JwtStrategy],
   exports: [JwtModule],
 })
 export class AuthModule {}

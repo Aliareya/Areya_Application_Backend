@@ -1,24 +1,30 @@
 import {
   Controller,
-  Get,
   Post,
   Body,
   Res,
+  Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
+  UnauthorizedException,
+  Get,
 } from '@nestjs/common';
-import { Response } from 'express';
+
+import { Request, Response } from 'express';
+
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  register(@Body() Dto: CreateUserDto) {
-    return this.authService.register(Dto);
+  register(@Body() dto: CreateUserDto) {
+    return this.authService.register(dto);
   }
 
   @Post('login')
@@ -45,8 +51,20 @@ export class AuthController {
   }
 
   @Post('logout')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  logout(@Res({ passthrough: true }) response: Response) {
+  async logout(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const token = request.cookies?.areya_access;
+
+    if (!token) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    await this.authService.logout(token);
+
     response.clearCookie('areya_access', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -58,5 +76,23 @@ export class AuthController {
       success: true,
       message: 'Logout successful',
     };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  me(@Req() request: Request) {
+    return {
+      success: true,
+      message : 'User information retrieved successfully',
+      user: request.user,
+    };
+  }
+
+  @Get('log')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async log(@Req() request: Request) {
+    const user = request.user;
   }
 }

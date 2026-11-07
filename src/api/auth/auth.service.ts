@@ -1,19 +1,25 @@
+
 import {
   ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
-import * as bcrypt from 'bcrypt';
+
 import { JwtService } from '@nestjs/jwt';
+import { RevokedTokensService } from './revoked-tokens.service';
+
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly revokedTokensService: RevokedTokensService,
   ) {}
 
   async register(createUserDto: CreateUserDto) {
@@ -53,7 +59,6 @@ export class AuthService {
 
     const payload = {
       sub: user.id,
-      email: user.email,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -64,5 +69,19 @@ export class AuthService {
       user: result,
       accessToken,
     };
+  }
+
+  async logout(token: string): Promise<void> {
+    if (!token) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    const payload = await this.jwtService.verifyAsync<{
+      exp: number;
+    }>(token);
+
+    const expiresAt = new Date(payload.exp * 1000);
+
+    await this.revokedTokensService.revoke(token, expiresAt);
   }
 }
