@@ -3,32 +3,50 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
   OneToMany,
+  CreateDateColumn,
 } from 'typeorm';
 
-import { RolePermission } from './role-permission.entity';
+import { RolePermission } from '../../roles/entities/role-permission.entity';
 
 @Entity('permissions')
 export class Permission {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id!: string;
 
-  @Column({ length: 100 })
+  // Permission Name
+  @Column({
+    type: 'varchar',
+    length: 100,
+  })
   name!: string;
 
-  @Column({ length: 150, unique: true })
+  // Permission Slug
+  @Column({
+    type: 'varchar',
+    length: 150,
+    unique: true,
+  })
   slug!: string;
 
-  @Column({ type: 'text', nullable: true })
+  // Description
+  @Column({
+    type: 'text',
+    nullable: true,
+  })
   description!: string | null;
 
+  // Role Permissions
   @OneToMany(
     () => RolePermission,
     (rolePermission) => rolePermission.permission,
   )
   rolePermissions!: RolePermission[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  // Created At
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+  })
   createdAt!: Date;
 }

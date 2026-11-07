@@ -1,26 +1,33 @@
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsOptional, 
-  IsEmail, 
-  MinLength, 
-  Matches 
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  MinLength,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
-  @IsNotEmpty({ message: 'وارد کردن نام و نام خانوادگی الزامی است' })
+  @Length(2, 100)
   fullName!: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'شماره موبایل الزامی است' })
-  @Matches(/^\+93\s?\d{9}$/, { message: 'فرمت شماره موبایل نامعتبر است (مثال: 783376973 93+)' })
-  phoneNumber!: string;
+  @Length(7, 20)
+  phone!: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(150)
+  email?: string;
 
   @IsString()
-  @MinLength(6, { message: 'رمز عبور باید حداقل ۶ کاراکتر باشد' })
+  @MinLength(8)
+  @MaxLength(100)
   password!: string;
 
-  @IsEmail({}, { message: 'فرمت ایمیل نامعتبر است' })
-  email?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  avatar?: string;
 }

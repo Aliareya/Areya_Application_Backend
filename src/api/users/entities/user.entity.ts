@@ -1,83 +1,142 @@
-import { Workshop } from '../../../api/workshops/entities/workshop.entity';
-import { SubscriptionPlan } from '../../../api/subscription-plan/entities/subscription-plan.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  ManyToOne,
+  OneToOne,
+  OneToMany,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  JoinColumn,
-  ManyToOne,
+  Unique,
+  Check,
 } from 'typeorm';
-import { Role } from '../../../api/roles/entities/role.entity';
+
+import { Shop } from '../../shops/entities/shop.entity';
+import { Store } from '../../stores/entities/store.entity';
+import { UserRole } from './user-role.entity';
 
 export enum SystemRole {
-  ADMIN = 'admin',
-  CUSTOMER = 'customer',
+  SUPER_ADMIN = 'super_admin',
+  OWNER = 'owner',
+  EMPLOYEE = 'employee',
   USER = 'user',
 }
 
 @Entity('users')
+@Unique('uq_users_id_shop', ['id', 'shopId'])
+@Check(
+  'chk_user_system_role_shop',
+  `(
+    ("system_role" = 'employee' AND "shop_id" IS NOT NULL)
+    OR
+    ("system_role" IN ('user', 'owner', 'super_admin') AND "shop_id" IS NULL)
+  )`,
+)
 export class User {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  // Primary Key
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id!: string;
 
-  @Column({ name: 'full_name', length: 100 })
+  // Full Name
+  @Column({
+    name: 'full_name',
+    type: 'varchar',
+    length: 150,
+  })
   fullName!: string;
 
-  @ManyToOne(() => Workshop, (workshop) => workshop.users, {
-    nullable: true,
-    onDelete: 'CASCADE',
+  // Phone Number
+  @Column({
+    type: 'varchar',
+    length: 20,
+    unique: true,
   })
-  @JoinColumn({ name: 'workshop_id' })
-  workshop!: Workshop;
+  phone!: string;
 
-  @Column({ name: 'phone_number', length: 15, unique: true })
-  phoneNumber!: string;
+  // Email
+  @Column({
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+    unique: true,
+  })
+  email!: string | null;
 
-  @Column({ length: 255, unique: true, nullable: false })
-  email!: string;
-
-  @Column({ name: 'email_verified', type: 'boolean', nullable: true })
-  emailVerified!: boolean;
-
-  @Column({ name: 'password', length: 255, nullable: true, select: false })
+  // Password
+  @Column({
+    type: 'varchar',
+    length: 255,
+    select: false,
+  })
   password!: string;
 
-  @Column({ name: 'google_id', length: 255, unique: true, nullable: true })
-  googleId!: string;
-
-  @Column({ name: 'image', type: 'text', nullable: true })
-  avatarUrl!: string;
-
+  // System Role
   @Column({
     name: 'system_role',
     type: 'enum',
     enum: SystemRole,
-    default: SystemRole.USER, 
+    default: SystemRole.USER,
   })
   systemRole!: SystemRole;
 
-  @ManyToOne(() => SubscriptionPlan, (plan) => plan.users, {
+  // Shop ID
+  @Column({
+    name: 'shop_id',
+    type: 'bigint',
     nullable: true,
-    onDelete: 'SET NULL',
   })
-  @JoinColumn({ name: 'subscription_plan_id' })
-  subscriptionPlan!: SubscriptionPlan;
+  shopId!: string | null;
 
-  @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
-  lastLoginAt!: Date;
+  // Shop Relation
+  @ManyToOne(() => Shop, (shop) => shop.users, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'shop_id' })
+  shop!: Shop | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  // User Role Relation
+  @OneToOne(() => UserRole, (userRole) => userRole.user)
+  userRole!: UserRole | null;
+
+  // Owned Store Relation
+  @OneToOne(() => Store, (store) => store.owner)
+  ownedStore!: Store | null;
+
+  // Account Status
+  @Column({
+    name: 'is_active',
+    type: 'boolean',
+    default: true,
+  })
+  isActive!: boolean;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  avatar!: string | null;
+
+  @Column({
+    name: 'last_login_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  lastLoginAt!: Date | null;
+
+  // Created At
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+  })
   createdAt!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt!: Date;
-
-  @ManyToOne(() => Role, (role) => role.users, {
-    nullable: true,
-    onDelete: 'SET NULL',
+  // Updated At
+  @UpdateDateColumn({
+    name: 'updated_at',
+    type: 'timestamptz',
   })
-  @JoinColumn({ name: 'role_id' })
-  roleEntity!: Role | null;
+  updatedAt!: Date;
 }

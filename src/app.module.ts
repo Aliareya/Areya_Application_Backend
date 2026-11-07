@@ -4,16 +4,17 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import databaseConfig from './config/database.config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { AuthModule } from './api/auth/auth.module';
-import { UsersModule } from './api/users/users.module';
+
 
 import pg from 'pg';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
-import { WorkshopsModule } from './api/workshops/workshops.module';
-import { SubscriptionPlanModule } from './api/subscription-plan/subscription-plan.module';
+import { UsersModule } from './api/users/users.module';
+import { StoresModule } from './api/stores/stores.module';
+import { ShopsModule } from './api/shops/shops.module';
 import { RolesModule } from './api/roles/roles.module';
 import { PermissionsModule } from './api/permissions/permissions.module';
-import { SuppliersModule } from './api/suppliers/suppliers.module';
+import { AuthModule } from './api/auth/auth.module';
+
 
 
 @Module({
@@ -30,14 +31,13 @@ import { SuppliersModule } from './api/suppliers/suppliers.module';
         return configService.getOrThrow<TypeOrmModuleOptions>('database');
       },
     }),
-    AuthModule,
-    UsersModule,
-    WorkshopsModule,
-    SubscriptionPlanModule,
     CloudinaryModule,
+    UsersModule,
+    StoresModule,
+    ShopsModule,
     RolesModule,
     PermissionsModule,
-    SuppliersModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
