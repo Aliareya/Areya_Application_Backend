@@ -17,8 +17,8 @@ export default new DataSource({
   },
 
   entities: [
-    'src/**/*.entity.ts',
-  ],
+  __dirname + '/../**/*.entity{.ts,.js}',
+],
 
   migrations: [
     'src/database/migrations/*.ts',

@@ -34,9 +34,12 @@ export class Shop {
 
   // Store Relation
   @ManyToOne(() => Store, (store) => store.shops, {
-    onDelete: 'CASCADE',
+    onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'store_id' })
+  @JoinColumn({
+  name: 'store_id',
+  foreignKeyConstraintName: 'FK_shops_store',
+})
   store!: Store;
 
   // Shop Name

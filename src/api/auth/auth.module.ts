@@ -6,10 +6,18 @@ import { StringValue } from 'ms';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
+import { RevokedToken } from './entities/revoked-token.entity';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { RevokedTokensService } from './revoked-tokens.service';
+import { PassportModule } from '@nestjs/passport';
 
 @Module({
   imports: [
     UsersModule,
+    PassportModule.register({
+      defaultStrategy: 'jwt',
+    }),
+    TypeOrmModule.forFeature([RevokedToken]),
 
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -24,7 +32,7 @@ import { UsersModule } from '../users/users.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, RevokedTokensService],
   exports: [JwtModule],
 })
 export class AuthModule {}

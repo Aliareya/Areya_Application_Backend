@@ -1,4 +1,3 @@
-
 import {
   Entity,
   PrimaryColumn,
@@ -23,7 +22,10 @@ export class RolePermission {
   @ManyToOne(() => Role, (role) => role.rolePermissions, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'role_id' })
+  @JoinColumn({
+    name: 'role_id',
+    foreignKeyConstraintName: 'FK_role_permissions_role',
+  })
   role!: Role;
 
   // Permission ID - Composite Primary Key
@@ -34,14 +36,13 @@ export class RolePermission {
   permissionId!: string;
 
   // Permission Relation
-  @ManyToOne(
-    () => Permission,
-    (permission) => permission.rolePermissions,
-    {
-      onDelete: 'CASCADE',
-    },
-  )
-  @JoinColumn({ name: 'permission_id' })
+  @ManyToOne(() => Permission, (permission) => permission.rolePermissions, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({
+    name: 'permission_id',
+    foreignKeyConstraintName: 'FK_role_permissions_permission',
+  })
   permission!: Permission;
 
   // Created At

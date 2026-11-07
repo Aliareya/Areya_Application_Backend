@@ -35,14 +35,14 @@ export class UsersService {
         throw new ConflictException('User with this email already exists');
       }
     }
-    
+
     const normalizedEmail = createUserDto.email?.trim().toLowerCase() ?? null;
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
     const user = this.userRepository.create({
       fullName: createUserDto.fullName,
       phone: createUserDto.phone,
-      email: normalizedEmail?? null,
+      email: normalizedEmail ?? null,
       password: hashedPassword,
       systemRole: SystemRole.USER,
       shopId: null,
@@ -102,6 +102,12 @@ export class UsersService {
         { identifier },
       )
       .getOne();
+  }
+
+  async findUserById(id: string) {
+    return await this.userRepository.findOne({
+      where: { id },
+    });
   }
 
   findAll() {

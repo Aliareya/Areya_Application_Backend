@@ -29,9 +29,12 @@ export class Role {
 
   // Shop Relation
   @ManyToOne(() => Shop, (shop) => shop.roles, {
-    onDelete: 'CASCADE',
+    onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'shop_id' })
+  @JoinColumn({
+    name: 'shop_id',
+    foreignKeyConstraintName: 'FK_roles_shop',
+  })
   shop!: Shop;
 
   // Role Name

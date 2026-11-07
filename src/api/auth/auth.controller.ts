@@ -43,4 +43,20 @@ export class AuthController {
       user,
     };
   }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  logout(@Res({ passthrough: true }) response: Response) {
+    response.clearCookie('areya_access', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    return {
+      success: true,
+      message: 'Logout successful',
+    };
+  }
 }

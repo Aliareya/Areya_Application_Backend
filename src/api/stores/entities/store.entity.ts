@@ -28,7 +28,10 @@ export class Store {
   @OneToOne(() => User, (user) => user.ownedStore, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'owner_id' })
+  @JoinColumn({
+    name: 'owner_id',
+    foreignKeyConstraintName: 'FK_stores_owner',
+  })
   owner!: User;
 
   @Column({ type: 'varchar', length: 150 })
