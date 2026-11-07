@@ -3,7 +3,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { AppModule } from '../src/app.module';
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { setupAppConfig } from 'src/config/app.config';
+import { setupAppConfig } from '../src/config/app.config';
 
 const server = express();
 
