@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -20,7 +19,6 @@ import { User, SystemRole } from '../users/entities/user.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { CloudinaryService } from '../../cloudinary/cloudinary.service';
-
 
 @Injectable()
 export class StoresService {
@@ -80,9 +78,7 @@ export class StoresService {
         });
 
         if (existingStore) {
-          throw new ConflictException(
-            'شما قبلاً یک فروشگاه ایجاد کرده‌اید.',
-          );
+          throw new ConflictException('شما قبلاً یک فروشگاه ایجاد کرده‌اید.');
         }
 
         const normalizedSlug = createStoreDto.slug.trim().toLowerCase();
@@ -112,6 +108,9 @@ export class StoresService {
         });
 
         const savedStore = await storeRepository.save(store);
+        user.systemRole = SystemRole.OWNER;
+
+        await userRepository.save(user);
 
         return {
           success: true,
@@ -124,9 +123,7 @@ export class StoresService {
       // Remove uploaded image if store creation fails
       if (uploadedLogo) {
         try {
-          await this.cloudinaryService.removeImage(
-            uploadedLogo.publicId,
-          );
+          await this.cloudinaryService.removeImage(uploadedLogo.publicId);
         } catch {
           // Preserve the original database or validation error
         }
@@ -174,19 +171,15 @@ export class StoresService {
     const store = await this.findOne(id);
 
     if (Object.keys(updateStoreDto).length === 0) {
-      throw new BadRequestException(
-        'حداقل یک فیلد برای ویرایش وارد کنید.',
-      );
+      throw new BadRequestException('حداقل یک فیلد برای ویرایش وارد کنید.');
     }
 
     if (updateStoreDto.slug !== undefined) {
       const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
 
-      const existingSlug = await this.dataSource
-        .getRepository(Store)
-        .findOne({
-          where: { slug: normalizedSlug },
-        });
+      const existingSlug = await this.dataSource.getRepository(Store).findOne({
+        where: { slug: normalizedSlug },
+      });
 
       if (existingSlug && existingSlug.id !== id) {
         throw new ConflictException(
