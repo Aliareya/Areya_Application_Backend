@@ -20,7 +20,8 @@ export enum ShopStatus {
 }
 
 @Entity('shops')
-@Unique('uq_shops_store_name', ['storeId', 'name'])
+@Unique('uq_shops_store_normalized_name', ['storeId', 'normalizedName'])
+@Unique('uq_shops_store_slug', ['storeId', 'slug'])
 @Unique('uq_shops_id_store', ['id', 'storeId'])
 export class Shop {
   @PrimaryGeneratedColumn({ type: 'bigint' })
@@ -37,9 +38,9 @@ export class Shop {
     onDelete: 'RESTRICT',
   })
   @JoinColumn({
-  name: 'store_id',
-  foreignKeyConstraintName: 'FK_shops_store',
-})
+    name: 'store_id',
+    foreignKeyConstraintName: 'FK_shops_store',
+  })
   store!: Store;
 
   // Shop Name
@@ -48,6 +49,21 @@ export class Shop {
     length: 150,
   })
   name!: string;
+
+  // Normalized Shop Name (used for uniqueness)
+  @Column({
+    name: 'normalized_name',
+    type: 'varchar',
+    length: 150,
+  })
+  normalizedName!: string;
+
+  // Shop Slug
+  @Column({
+    type: 'varchar',
+    length: 180,
+  })
+  slug!: string;
 
   // Phone Number
   @Column({
@@ -62,14 +78,23 @@ export class Shop {
     type: 'text',
     nullable: true,
   })
-  address!  : string | null;
+  address!: string | null;
 
+  // Logo
   @Column({
     type: 'varchar',
     length: 255,
     nullable: true,
   })
-  logo!:  string | null;
+  logo!: string | null;
+
+  @Column({
+    name: 'logo_public_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  logoPublicId!: string | null;
 
   // Shop Status
   @Column({

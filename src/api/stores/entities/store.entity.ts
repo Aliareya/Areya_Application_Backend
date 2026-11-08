@@ -17,6 +17,12 @@ export enum StoreStatus {
   INACTIVE = 'inactive',
 }
 
+export enum StoreCreationStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 @Entity('stores')
 export class Store {
   @PrimaryGeneratedColumn({ type: 'bigint' })
@@ -37,13 +43,19 @@ export class Store {
   @Column({ type: 'varchar', length: 150 })
   name!: string;
 
+  @Column({
+    type: 'varchar',
+    length: 180,
+    unique: true,
+  })
+  slug!: string;
+
   @Column({ type: 'varchar', length: 20, nullable: true })
   phone!: string | null;
 
   @Column({ type: 'text', nullable: true })
   address!: string | null;
 
-  // Store Logo
   @Column({
     type: 'varchar',
     length: 255,
@@ -57,6 +69,14 @@ export class Store {
     default: StoreStatus.INACTIVE,
   })
   status!: StoreStatus;
+
+  @Column({
+    name: 'creation_status',
+    type: 'enum',
+    enum: StoreCreationStatus,
+    default: StoreCreationStatus.PENDING,
+  })
+  creationStatus!: StoreCreationStatus;
 
   @OneToMany(() => Shop, (shop) => shop.store)
   shops!: Shop[];
