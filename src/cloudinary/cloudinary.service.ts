@@ -1,48 +1,68 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
+
+import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
 
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
     cloudinary.config({
-      cloud_name:'agtdlqwi',
-      api_key: '552468484797824',
-      api_secret: 'x0-exs23JaC4VJlYWn88kHnKyKM',
+      cloud_name: this.configService.getOrThrow<string>(
+        'CLOUDINARY_CLOUD_NAME',
+      ),
+      api_key: this.configService.getOrThrow<string>('CLOUDINARY_API_KEY'),
+      api_secret: this.configService.getOrThrow<string>(
+        'CLOUDINARY_API_SECRET',
+      ),
     });
   }
 
   async uploadFile(file: Express.Multer.File) {
-    return new Promise<{ url: string; publicId: string }>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        { folder: 'stores/logos' },
-        (error, result) => {
-          if (error || !result) return reject(error || new Error('Upload failed'));
-          resolve({ url: result.secure_url, publicId: result.public_id });
+    try {
+      return await new Promise<{ url: string; publicId: string }>(
+        (resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'stores/logos',
+              resource_type: 'image',
+            },
+            (error, result) => {
+              if (error || !result) {
+                return reject(error || new Error('Upload failed'));
+              }
+
+              resolve({
+                url: result.secure_url,
+                publicId: result.public_id,
+              });
+            },
+          );
+
+          stream.end(file.buffer);
         },
       );
-      stream.end(file.buffer);
-    });
+    } catch (error) {
+      this.logger.error('Cloudinary upload failed', error);
+
+      throw new InternalServerErrorException('آپلود تصویر با مشکل مواجه شد.');
+    }
   }
 
   async removeImage(publicId: string) {
-    return new Promise((resolve, reject) => {
-      cloudinary.uploader.destroy(publicId, (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
+    try {
+      return await cloudinary.uploader.destroy(publicId, {
+        resource_type: 'image',
       });
-    });
-  }
+    } catch (error) {
+      this.logger.error('Cloudinary image deletion failed', error);
 
-  async updateImage(file: Express.Multer.File, oldPublicId?: string) {
-    if (oldPublicId) {
-      await this.removeImage(oldPublicId);
+      throw new InternalServerErrorException('حذف تصویر با مشکل مواجه شد.');
     }
-    return this.uploadFile(file);
-  }
-
-  async uploadMultiple(files: Express.Multer.File[]) {
-    return Promise.all(files.map((file) => this.uploadFile(file)));
   }
 }

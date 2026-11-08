@@ -1,26 +1,49 @@
-import { Injectable } from '@nestjs/common';
-import { CreatePermissionDto } from './dto/create-permission.dto';
-import { UpdatePermissionDto } from './dto/update-permission.dto';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import { Permission } from './entities/permission.entity';
+import { SYSTEM_PERMISSIONS } from './constants/permissions.constant';
 
 @Injectable()
-export class PermissionsService {
-  create(createPermissionDto: CreatePermissionDto) {
-    return 'This action adds a new permission';
+export class PermissionsService implements OnModuleInit {
+  constructor(
+    @InjectRepository(Permission)
+    private readonly permissionRepository: Repository<Permission>,
+  ) {}
+
+  // Register system permissions when the module starts
+  async onModuleInit(): Promise<void> {
+    await this.seedPermissions();
   }
 
-  findAll() {
-    return `This action returns all permissions`;
+  // Seed permissions without creating duplicates
+  async seedPermissions(): Promise<void> {
+    for (const permission of SYSTEM_PERMISSIONS) {
+      await this.permissionRepository.upsert(
+        {
+          name: permission.name,
+          slug: permission.slug,
+          description: permission.description,
+        },
+        ['slug'],
+      );
+    }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} permission`;
+  // Get all permissions
+  async findAll(): Promise<Permission[]> {
+    return this.permissionRepository.find({
+      order: {
+        id: 'ASC',
+      },
+    });
   }
 
-  update(id: number, updatePermissionDto: UpdatePermissionDto) {
-    return `This action updates a #${id} permission`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} permission`;
+  // Get permission by ID
+  async findOne(id: string): Promise<Permission | null> {
+    return this.permissionRepository.findOne({
+      where: { id },
+    });
   }
 }

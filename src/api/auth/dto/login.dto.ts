@@ -5,11 +5,15 @@ import {
 } from 'class-validator';
 
 export class LoginDto {
-  @IsString()
-  @MaxLength(150)
+  @IsString({ message: 'ایمیل یا شماره تماس باید به شکل متن باشد.' })
+  @MaxLength(150, {
+    message: 'ایمیل یا شماره تماس نباید بیشتر از ۱۵۰ حرف باشد.',
+  })
   identifier!: string;
 
-  @IsString()
-  @MinLength(8)
+  @IsString({ message: 'رمز عبور باید به شکل متن باشد.' })
+  @MinLength(8, {
+    message: 'رمز عبور باید حداقل ۸ حرف داشته باشد.',
+  })
   password!: string;
 }

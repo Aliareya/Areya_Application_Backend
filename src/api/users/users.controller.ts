@@ -1,7 +1,34 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+
+import { Request } from 'express';
+
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorator/roles.decorator';
+import { SystemRole } from './entities/user.entity';
+import { AssignUserRoleDto } from './dto/assign-user-role.dto';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    id: string;
+    systemRole: SystemRole;
+  };
+}
 
 @Controller('users')
 export class UsersController {
@@ -31,4 +58,33 @@ export class UsersController {
   remove(@Param('id') id: string) {
     return this.usersService.remove(+id);
   }
+
+  @Put('shops/:shopId/users/:userId/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.OWNER)
+  assignRole(
+    @Req() req: AuthenticatedRequest,
+    @Param('shopId') shopId: string,
+    @Param('userId') userId: string,
+    @Body() assignUserRoleDto: AssignUserRoleDto,
+  ) {
+    return this.usersService.assignRole(
+      req.user.id,
+      shopId,
+      userId,
+      assignUserRoleDto,
+    );
+  }
+
+  @Get('shops/:shopId/users/:userId/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.OWNER)
+  getEmployeeRole(
+    @Req() req: AuthenticatedRequest,
+    @Param('shopId') shopId: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.usersService.getEmployeeRole(req.user.id, shopId, userId);
+  }
+  
 }

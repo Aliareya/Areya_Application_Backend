@@ -93,12 +93,15 @@ export class User {
     nullable: true,
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'shop_id' })
+  @JoinColumn({
+    name: 'shop_id',
+    foreignKeyConstraintName: 'FK_users_shop',
+  })
   shop!: Shop | null;
 
   // User Role Relation
-  @OneToOne(() => UserRole, (userRole) => userRole.user)
-  userRole!: UserRole | null;
+  @OneToMany(() => UserRole, (userRole) => userRole.user)
+  userRoles!: UserRole[];
 
   // Owned Store Relation
   @OneToOne(() => Store, (store) => store.owner)
