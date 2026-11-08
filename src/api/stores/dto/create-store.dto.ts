@@ -1,3 +1,4 @@
+
 import {
   IsString,
   IsOptional,
@@ -39,11 +40,4 @@ export class CreateStoreDto {
   @IsOptional()
   @IsString()
   address?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255, {
-    message: 'آدرس لوگو نباید بیشتر از ۲۵۵ حرف باشد.',
-  })
-  logo?: string | null;
 }

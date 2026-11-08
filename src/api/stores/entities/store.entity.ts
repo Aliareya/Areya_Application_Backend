@@ -64,6 +64,14 @@ export class Store {
   logo!: string | null;
 
   @Column({
+    name: 'logo_public_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  logoPublicId!: string | null;
+
+  @Column({
     type: 'enum',
     enum: StoreStatus,
     default: StoreStatus.INACTIVE,

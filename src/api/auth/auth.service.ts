@@ -33,7 +33,7 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException({
-        message: 'Invalid email/phone or password',
+        message: 'ایمیل یا شماره تماس و رمز عبور نادرست است.',
         errors: [],
       });
     }
@@ -45,14 +45,14 @@ export class AuthService {
 
     if (!isPasswordValid) {
       throw new UnauthorizedException({
-        message: 'Invalid email/phone or password',
+        message: 'ایمیل یا شماره تماس و رمز عبور نادرست است.',
         errors: [],
       });
     }
 
     if (!user.isActive) {
       throw new ForbiddenException({
-        message: 'Your account is inactive',
+        message: 'حساب کاربری شما غیرفعال است.',
         errors: [],
       });
     }
@@ -63,17 +63,31 @@ export class AuthService {
 
     const accessToken = await this.jwtService.signAsync(payload);
 
-    const { password, ...result } = user;
-
+    // دریافت آخرین اطلاعات کاربر و دسترسی‌های او
+    const profile = await this.userService.getAuthProfile(user.id);
+    
     return {
-      user: result,
+      user: profile.user,
+      role: profile.role,
+      permissions: profile.permissions,
       accessToken,
+    };
+  }
+  
+  async getProfile(userId: string) {
+    const profile = await this.userService.getAuthProfile(userId);
+     return {
+      user: profile.user,
+      role: profile.role,
+      permissions: profile.permissions,
     };
   }
 
   async logout(token: string): Promise<void> {
     if (!token) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException(
+        'برای انجام این عملیات، ابتدا وارد حساب کاربری شوید.',
+      );
     }
 
     const payload = await this.jwtService.verifyAsync<{

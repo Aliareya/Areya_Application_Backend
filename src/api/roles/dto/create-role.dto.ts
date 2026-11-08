@@ -8,8 +8,13 @@ import {
   Matches,
 } from 'class-validator';
 
+import { Transform } from 'class-transformer';
+
 export class CreateRoleDto {
   // Role Name
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @IsNotEmpty({ message: 'لطفاً نام نقش را وارد کنید.' })
   @MinLength(2, {
@@ -21,6 +26,9 @@ export class CreateRoleDto {
   name!: string;
 
   // Role Slug
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsString()
   @IsNotEmpty({ message: 'لطفاً شناسه نقش را وارد کنید.' })
   @MinLength(2, {
@@ -36,7 +44,13 @@ export class CreateRoleDto {
   slug!: string;
 
   // Description
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString()
+  @MaxLength(1000, {
+    message: 'توضیحات نقش نباید بیشتر از ۱۰۰۰ حرف باشد.',
+  })
   description?: string | null;
 }

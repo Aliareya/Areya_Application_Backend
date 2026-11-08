@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -11,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Role } from './entities/role.entity';
-import { Shop } from '../shops/entities/shop.entity';
+import { Shop, ShopStatus } from '../shops/entities/shop.entity';
 import { User } from '../users/entities/user.entity';
 import { UserRole } from '../users/entities/user-role.entity';
 
@@ -19,6 +18,12 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
 import { SystemRole } from '../users/entities/user.entity';
+import { DataSource } from 'typeorm';
+
+import { RolePermission } from './entities/role-permission.entity';
+import { PermissionsService } from '../permissions/permissions.service';
+
+import { AssignRolePermissionsDto } from './dto/assign-role-permissions.dto';
 
 @Injectable()
 export class RolesService {
@@ -34,6 +39,9 @@ export class RolesService {
 
     @InjectRepository(UserRole)
     private readonly userRoleRepository: Repository<UserRole>,
+    private readonly dataSource: DataSource,
+
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   // Check owner access to shop
@@ -71,8 +79,12 @@ export class RolesService {
     }
 
     if (shop.store.ownerId !== user.id) {
+      throw new ForbiddenException('شما اجازه دسترسی به این دکان را ندارید.');
+    }
+
+    if (shop.status === ShopStatus.INACTIVE) {
       throw new ForbiddenException(
-        'شما اجازه دسترسی به این دکان را ندارید.',
+        'دکان غیرفعال است و امکان مدیریت نقش‌ها وجود ندارد.',
       );
     }
 
@@ -80,20 +92,14 @@ export class RolesService {
   }
 
   // Create role
-  async create(
-    actorId: string,
-    shopId: string,
-    createRoleDto: CreateRoleDto,
-  ) {
+  async create(actorId: string, shopId: string, createRoleDto: CreateRoleDto) {
     await this.checkShopOwnership(actorId, shopId);
 
     const name = createRoleDto.name.trim();
     const slug = createRoleDto.slug.trim().toLowerCase();
 
     if (!name || !slug) {
-      throw new BadRequestException(
-        'نام و شناسه نقش نمی‌توانند خالی باشند.',
-      );
+      throw new BadRequestException('نام و شناسه نقش نمی‌توانند خالی باشند.');
     }
 
     const existingRole = await this.roleRepository.findOne({
@@ -158,11 +164,7 @@ export class RolesService {
   }
 
   // Get one role
-  async findOne(
-    actorId: string,
-    shopId: string,
-    id: string,
-  ) {
+  async findOne(actorId: string, shopId: string, id: string) {
     await this.checkShopOwnership(actorId, shopId);
 
     const role = await this.roleRepository.findOne({
@@ -184,6 +186,81 @@ export class RolesService {
     return role;
   }
 
+  // Get permissions of a role
+  async findPermissions(actorId: string, shopId: string, roleId: string) {
+    const role = await this.findOne(actorId, shopId, roleId);
+
+    return {
+      roleId: role.id,
+      roleName: role.name,
+      permissions: role.rolePermissions.map(
+        (rolePermission) => rolePermission.permission,
+      ),
+    };
+  }
+
+  // Assign or replace role permissions
+  async assignPermissions(
+    actorId: string,
+    shopId: string,
+    roleId: string,
+    assignRolePermissionsDto: AssignRolePermissionsDto,
+  ) {
+    await this.checkShopOwnership(actorId, shopId);
+
+    // Check permissions exist in the global permissions table
+    const allPermissions = await this.permissionsService.findAll();
+
+    const validPermissionIds = new Set(
+      allPermissions.map((permission) => permission.id),
+    );
+
+    const invalidPermissionIds = assignRolePermissionsDto.permissionIds.filter(
+      (permissionId) => !validPermissionIds.has(permissionId),
+    );
+
+    if (invalidPermissionIds.length > 0) {
+      throw new BadRequestException('یک یا چند شناسه دسترسی معتبر نیست.');
+    }
+
+    // Replace permissions inside a transaction
+    await this.dataSource.transaction(async (manager) => {
+      const roleRepository = manager.getRepository(Role);
+      const rolePermissionRepository = manager.getRepository(RolePermission);
+
+      const role = await roleRepository.findOne({
+        where: {
+          id: roleId,
+          shopId,
+        },
+      });
+
+      if (!role) {
+        throw new NotFoundException('نقش مورد نظر پیدا نشد.');
+      }
+
+      // Remove previous permissions
+      await rolePermissionRepository.delete({
+        roleId: role.id,
+      });
+
+      // Save new permissions
+      if (assignRolePermissionsDto.permissionIds.length > 0) {
+        const rolePermissions = assignRolePermissionsDto.permissionIds.map(
+          (permissionId) =>
+            rolePermissionRepository.create({
+              roleId: role.id,
+              permissionId,
+            }),
+        );
+
+        await rolePermissionRepository.save(rolePermissions);
+      }
+    });
+
+    return this.findPermissions(actorId, shopId, roleId);
+  }
+
   // Update role
   async update(
     actorId: string,
@@ -194,9 +271,7 @@ export class RolesService {
     await this.checkShopOwnership(actorId, shopId);
 
     if (Object.keys(updateRoleDto).length === 0) {
-      throw new BadRequestException(
-        'حداقل یک فیلد برای ویرایش ارسال کنید.',
-      );
+      throw new BadRequestException('حداقل یک فیلد برای ویرایش ارسال کنید.');
     }
 
     const role = await this.roleRepository.findOne({
@@ -214,9 +289,7 @@ export class RolesService {
       const name = updateRoleDto.name.trim();
 
       if (!name) {
-        throw new BadRequestException(
-          'نام نقش نمی‌تواند خالی باشد.',
-        );
+        throw new BadRequestException('نام نقش نمی‌تواند خالی باشد.');
       }
 
       role.name = name;
@@ -226,9 +299,7 @@ export class RolesService {
       const slug = updateRoleDto.slug.trim().toLowerCase();
 
       if (!slug) {
-        throw new BadRequestException(
-          'شناسه نقش نمی‌تواند خالی باشد.',
-        );
+        throw new BadRequestException('شناسه نقش نمی‌تواند خالی باشد.');
       }
 
       const existingRole = await this.roleRepository.findOne({
@@ -248,8 +319,7 @@ export class RolesService {
     }
 
     if (updateRoleDto.description !== undefined) {
-      role.description =
-        updateRoleDto.description?.trim() || null;
+      role.description = updateRoleDto.description?.trim() || null;
     }
 
     try {
@@ -277,11 +347,7 @@ export class RolesService {
   }
 
   // Delete role
-  async remove(
-    actorId: string,
-    shopId: string,
-    id: string,
-  ) {
+  async remove(actorId: string, shopId: string, id: string) {
     await this.checkShopOwnership(actorId, shopId);
 
     const role = await this.roleRepository.findOne({

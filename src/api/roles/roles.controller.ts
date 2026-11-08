@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Get,
@@ -9,6 +8,7 @@ import {
   Delete,
   Req,
   UseGuards,
+  Put,
 } from '@nestjs/common';
 
 import { Request } from 'express';
@@ -19,10 +19,10 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-
 import { User, SystemRole } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
+import { AssignRolePermissionsDto } from './dto/assign-role-permissions.dto';
 
 interface AuthenticatedRequest extends Request {
   user: User;
@@ -32,9 +32,7 @@ interface AuthenticatedRequest extends Request {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(SystemRole.OWNER)
 export class RolesController {
-  constructor(
-    private readonly rolesService: RolesService,
-  ) {}
+  constructor(private readonly rolesService: RolesService) {}
 
   // Create role
   @Post()
@@ -43,23 +41,13 @@ export class RolesController {
     @Param('shopId') shopId: string,
     @Body() createRoleDto: CreateRoleDto,
   ) {
-    return this.rolesService.create(
-      req.user.id,
-      shopId,
-      createRoleDto,
-    );
+    return this.rolesService.create(req.user.id, shopId, createRoleDto);
   }
 
   // Get all roles
   @Get()
-  findAll(
-    @Req() req: AuthenticatedRequest,
-    @Param('shopId') shopId: string,
-  ) {
-    return this.rolesService.findAll(
-      req.user.id,
-      shopId,
-    );
+  findAll(@Req() req: AuthenticatedRequest, @Param('shopId') shopId: string) {
+    return this.rolesService.findAll(req.user.id, shopId);
   }
 
   // Get one role
@@ -69,10 +57,32 @@ export class RolesController {
     @Param('shopId') shopId: string,
     @Param('id') id: string,
   ) {
-    return this.rolesService.findOne(
+    return this.rolesService.findOne(req.user.id, shopId, id);
+  }
+
+  // Get role permissions
+  @Get(':id/permissions')
+  findPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('shopId') shopId: string,
+    @Param('id') roleId: string,
+  ) {
+    return this.rolesService.findPermissions(req.user.id, shopId, roleId);
+  }
+
+  // Assign or replace role permissions
+  @Put(':id/permissions')
+  assignPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('shopId') shopId: string,
+    @Param('id') roleId: string,
+    @Body() assignRolePermissionsDto: AssignRolePermissionsDto,
+  ) {
+    return this.rolesService.assignPermissions(
       req.user.id,
       shopId,
-      id,
+      roleId,
+      assignRolePermissionsDto,
     );
   }
 
@@ -84,12 +94,7 @@ export class RolesController {
     @Param('id') id: string,
     @Body() updateRoleDto: UpdateRoleDto,
   ) {
-    return this.rolesService.update(
-      req.user.id,
-      shopId,
-      id,
-      updateRoleDto,
-    );
+    return this.rolesService.update(req.user.id, shopId, id, updateRoleDto);
   }
 
   // Delete role
@@ -99,10 +104,6 @@ export class RolesController {
     @Param('shopId') shopId: string,
     @Param('id') id: string,
   ) {
-    return this.rolesService.remove(
-      req.user.id,
-      shopId,
-      id,
-    );
+    return this.rolesService.remove(req.user.id, shopId, id);
   }
 }

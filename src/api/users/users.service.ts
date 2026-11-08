@@ -1,17 +1,33 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
+
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+
 import { SystemRole, User } from './entities/user.entity';
-import { QueryFailedError, Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { UserRole } from './entities/user-role.entity';
+
+import { Role } from '../roles/entities/role.entity';
+import { Shop, ShopStatus } from '../shops/entities/shop.entity';
+
 import * as bcrypt from 'bcrypt';
 import { UserResponseDto } from './dto/user-response.dto';
+import { AssignUserRoleDto } from './dto/assign-user-role.dto';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
@@ -124,5 +140,294 @@ export class UsersService {
 
   remove(id: number) {
     return `This action removes a #${id} user`;
+  }
+
+  async assignRole(
+    actorId: string,
+    shopId: string,
+    userId: string,
+    assignUserRoleDto: AssignUserRoleDto,
+  ) {
+    // Validate BIGINT IDs
+    if (
+      !/^[1-9]\d*$/.test(actorId) ||
+      !/^[1-9]\d*$/.test(shopId) ||
+      !/^[1-9]\d*$/.test(userId) ||
+      !/^[1-9]\d*$/.test(assignUserRoleDto.roleId)
+    ) {
+      throw new BadRequestException('شناسه واردشده نامعتبر است.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const userRepository = manager.getRepository(User);
+      const shopRepository = manager.getRepository(Shop);
+      const roleRepository = manager.getRepository(Role);
+      const userRoleRepository = manager.getRepository(UserRole);
+
+      // 1. Check shop owner
+      const owner = await userRepository.findOne({
+        where: {
+          id: actorId,
+          systemRole: SystemRole.OWNER,
+          isActive: true,
+        },
+      });
+
+      if (!owner) {
+        throw new ForbiddenException('شما اجازه اختصاص نقش را ندارید.');
+      }
+
+      // 2. Check shop ownership and status
+      const shop = await shopRepository.findOne({
+        where: { id: shopId },
+        relations: { store: true },
+      });
+
+      if (!shop || shop.store.ownerId !== owner.id) {
+        throw new NotFoundException('دکان پیدا نشد یا شما مالک آن نیستید.');
+      }
+
+      if (shop.status !== ShopStatus.ACTIVE) {
+        throw new ForbiddenException(
+          'اختصاص نقش در دکان غیرفعال امکان‌پذیر نیست.',
+        );
+      }
+
+      // 3. Find employee
+      const employee = await userRepository.findOne({
+        where: {
+          id: userId,
+          systemRole: SystemRole.EMPLOYEE,
+          shopId,
+        },
+      });
+
+      if (!employee) {
+        throw new NotFoundException('کارمند در این دکان پیدا نشد.');
+      }
+
+      if (!employee.isActive) {
+        throw new ForbiddenException(
+          'برای کارمند غیرفعال نمی‌توان نقش تعیین کرد.',
+        );
+      }
+
+      // 4. Check role belongs to the same shop
+      const role = await roleRepository.findOne({
+        where: {
+          id: assignUserRoleDto.roleId,
+          shopId,
+        },
+      });
+
+      if (!role) {
+        throw new NotFoundException('نقش مورد نظر در این دکان پیدا نشد.');
+      }
+
+      // 5. Find existing user role
+      let userRole = await userRoleRepository.findOne({
+        where: { userId },
+      });
+
+      if (userRole) {
+        // Replace existing role
+        userRole.roleId = role.id;
+        userRole.shopId = shopId;
+      } else {
+        // Assign new role
+        userRole = userRoleRepository.create({
+          userId,
+          roleId: role.id,
+          shopId,
+        });
+      }
+
+      await userRoleRepository.save(userRole);
+
+      return {
+        success: true,
+        message: 'نقش با موفقیت به کارمند اختصاص داده شد.',
+        assignment: {
+          userId: employee.id,
+          employeeName: employee.fullName,
+          shopId,
+          roleId: role.id,
+          roleName: role.name,
+        },
+      };
+    });
+  }
+
+  async getEmployeeRole(actorId: string, shopId: string, userId: string) {
+    if (
+      !/^[1-9]\d*$/.test(actorId) ||
+      !/^[1-9]\d*$/.test(shopId) ||
+      !/^[1-9]\d*$/.test(userId)
+    ) {
+      throw new BadRequestException('شناسه واردشده نامعتبر است.');
+    }
+
+    // 1. Check shop owner
+    const owner = await this.userRepository.findOne({
+      where: {
+        id: actorId,
+        systemRole: SystemRole.OWNER,
+        isActive: true,
+      },
+    });
+
+    if (!owner) {
+      throw new ForbiddenException('شما اجازه مشاهده این اطلاعات را ندارید.');
+    }
+
+    // 2. Check shop ownership
+    const shop = await this.dataSource.getRepository(Shop).findOne({
+      where: { id: shopId },
+      relations: { store: true },
+    });
+
+    if (!shop || shop.store.ownerId !== owner.id) {
+      throw new NotFoundException('دکان پیدا نشد یا شما مالک آن نیستید.');
+    }
+
+    if (shop.status !== ShopStatus.ACTIVE) {
+      throw new ForbiddenException('دکان غیرفعال است.');
+    }
+
+    // 3. Find employee
+    const employee = await this.userRepository.findOne({
+      where: {
+        id: userId,
+        systemRole: SystemRole.EMPLOYEE,
+        shopId,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('کارمند در این دکان پیدا نشد.');
+    }
+
+    // 4. Find assigned role and permissions
+    const userRole = await this.dataSource.getRepository(UserRole).findOne({
+      where: {
+        userId,
+        shopId,
+      },
+      relations: {
+        role: {
+          rolePermissions: {
+            permission: true,
+          },
+        },
+      },
+    });
+
+    if (!userRole) {
+      throw new NotFoundException('برای این کارمند نقشی تعیین نشده است.');
+    }
+
+    return {
+      success: true,
+      employee: {
+        id: employee.id,
+        fullName: employee.fullName,
+        shopId: employee.shopId,
+      },
+      role: {
+        id: userRole.role.id,
+        name: userRole.role.name,
+        slug: userRole.role.slug,
+        permissions: userRole.role.rolePermissions.map((item) => ({
+          id: item.permission.id,
+          name: item.permission.name,
+          slug: item.permission.slug,
+          description: item.permission.description,
+        })),
+      },
+    };
+  }
+
+  async getAuthProfile(userId: string) {
+    // 1. Validate user ID
+    if (!/^[1-9]\d*$/.test(userId)) {
+      throw new BadRequestException('شناسه کاربر نامعتبر است.');
+    }
+
+    // 2. Find user
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('کاربر پیدا نشد.');
+    }
+
+    // 3. Check user status
+    if (!user.isActive) {
+      throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
+    }
+
+    let role: {
+      id: string;
+      name: string;
+      slug: string;
+    } | null = null;
+
+    let permissions: {
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+    }[] = [];
+
+    // 4. Get employee role and permissions
+    if (user.systemRole === SystemRole.EMPLOYEE && user.shopId) {
+      const userRole = await this.dataSource.getRepository(UserRole).findOne({
+        where: {
+          userId: user.id,
+          shopId: user.shopId,
+        },
+        relations: {
+          role: {
+            rolePermissions: {
+              permission: true,
+            },
+          },
+        },
+      });
+
+      if (userRole) {
+        role = {
+          id: userRole.role.id,
+          name: userRole.role.name,
+          slug: userRole.role.slug,
+        };
+
+        permissions = (userRole.role.rolePermissions ?? []).map((item) => ({
+          id: item.permission.id,
+          name: item.permission.name,
+          slug: item.permission.slug,
+          description: item.permission.description,
+        }));
+      }
+    }
+
+    // 5. Return safe user information
+    const safeUser = {
+      id: user.id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      systemRole: user.systemRole,
+      shopId: user.shopId,
+      isActive: user.isActive,
+    };
+
+    return {
+      success: true,
+      user: safeUser,
+      role,
+      permissions,
+    };
   }
 }

@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   NotFoundException,
@@ -18,10 +19,15 @@ import { User, SystemRole } from '../users/entities/user.entity';
 
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
+import { CloudinaryService } from '../../cloudinary/cloudinary.service';
+
 
 @Injectable()
 export class StoresService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   // Validate bigint ID
   private validateId(id: string): void {
@@ -31,72 +37,103 @@ export class StoresService {
   }
 
   // Create store
-  async create(ownerId: string, createStoreDto: CreateStoreDto) {
+  async create(
+    ownerId: string,
+    createStoreDto: CreateStoreDto,
+    file?: Express.Multer.File,
+  ) {
     this.validateId(ownerId);
 
-    return this.dataSource.transaction(async (manager) => {
-      const userRepository = manager.getRepository(User);
-      const storeRepository = manager.getRepository(Store);
+    // Upload logo to Cloudinary
+    let uploadedLogo: { url: string; publicId: string } | null = null;
 
-      const user = await userRepository.findOne({
-        where: { id: ownerId },
-        lock: { mode: 'pessimistic_write' },
+    if (file) {
+      uploadedLogo = await this.cloudinaryService.uploadFile(file);
+    }
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const userRepository = manager.getRepository(User);
+        const storeRepository = manager.getRepository(Store);
+
+        const user = await userRepository.findOne({
+          where: { id: ownerId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!user) {
+          throw new NotFoundException('کاربر پیدا نشد.');
+        }
+
+        if (!user.isActive) {
+          throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
+        }
+
+        if (user.systemRole !== SystemRole.USER) {
+          throw new ForbiddenException(
+            'فقط کاربران عادی می‌توانند درخواست ایجاد فروشگاه ثبت کنند.',
+          );
+        }
+
+        const existingStore = await storeRepository.findOne({
+          where: { ownerId: user.id },
+        });
+
+        if (existingStore) {
+          throw new ConflictException(
+            'شما قبلاً یک فروشگاه ایجاد کرده‌اید.',
+          );
+        }
+
+        const normalizedSlug = createStoreDto.slug.trim().toLowerCase();
+
+        const existingSlug = await storeRepository.findOne({
+          where: { slug: normalizedSlug },
+        });
+
+        if (existingSlug) {
+          throw new ConflictException(
+            'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
+          );
+        }
+
+        const store = storeRepository.create({
+          ownerId: user.id,
+          name: createStoreDto.name.trim(),
+          slug: normalizedSlug,
+          phone: createStoreDto.phone?.trim() || null,
+          address: createStoreDto.address?.trim() || null,
+
+          logo: uploadedLogo?.url ?? null,
+          logoPublicId: uploadedLogo?.publicId ?? null,
+
+          status: StoreStatus.INACTIVE,
+          creationStatus: StoreCreationStatus.PENDING,
+        });
+
+        const savedStore = await storeRepository.save(store);
+
+        return {
+          success: true,
+          message:
+            'درخواست ایجاد فروشگاه با موفقیت ثبت شد. پس از بررسی مدیر سیستم، نتیجه به شما اعلام می‌شود.',
+          store: savedStore,
+        };
       });
-
-      if (!user) {
-        throw new NotFoundException('کاربر پیدا نشد.');
+    } catch (error) {
+      // Remove uploaded image if store creation fails
+      if (uploadedLogo) {
+        try {
+          await this.cloudinaryService.removeImage(
+            uploadedLogo.publicId,
+          );
+        } catch {
+          // Preserve the original database or validation error
+        }
       }
 
-      if (!user.isActive) {
-        throw new ForbiddenException('حساب کاربری مشتری غیرفعال است.');
-      }
-
-      if (user.systemRole !== SystemRole.USER) {
-        throw new ForbiddenException('این کاربر شرایط ایجاد فروشگاه را ندارد. یا فروشکاه دارد');
-      }
-
-      const existingStore = await storeRepository.findOne({
-        where: { ownerId: user.id },
-      });
-
-      if (existingStore) {
-        throw new ConflictException('این مشتری قبلاً یک فروشگاه دارد.');
-      }
-
-      const normalizedSlug = createStoreDto.slug.trim().toLowerCase();
-
-      const existingSlug = await storeRepository.findOne({
-        where: { slug: normalizedSlug },
-      });
-
-      if (existingSlug) {
-        throw new ConflictException(
-          'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
-        );
-      }
-
-      const store = storeRepository.create({
-        ownerId: user.id,
-        name: createStoreDto.name.trim(),
-        slug: normalizedSlug,
-        phone: createStoreDto.phone?.trim() || null,
-        address: createStoreDto.address?.trim() || null,
-        logo: createStoreDto.logo?.trim() || null,
-        status: StoreStatus.ACTIVE,
-        creationStatus: StoreCreationStatus.APPROVED,
-      });
-
-      const savedStore = await storeRepository.save(store);
-
-      user.systemRole = SystemRole.OWNER;
-      await userRepository.save(user);
-
-      return {
-        success: true,
-        message: 'فروشگاه با موفقیت ایجاد شد.',
-        store: savedStore,
-      };
-    });
+      throw error;
+    }
   }
 
   // Get all stores
@@ -137,15 +174,19 @@ export class StoresService {
     const store = await this.findOne(id);
 
     if (Object.keys(updateStoreDto).length === 0) {
-      throw new BadRequestException('حداقل یک فیلد برای ویرایش وارد کنید.');
+      throw new BadRequestException(
+        'حداقل یک فیلد برای ویرایش وارد کنید.',
+      );
     }
 
     if (updateStoreDto.slug !== undefined) {
       const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
 
-      const existingSlug = await this.dataSource.getRepository(Store).findOne({
-        where: { slug: normalizedSlug },
-      });
+      const existingSlug = await this.dataSource
+        .getRepository(Store)
+        .findOne({
+          where: { slug: normalizedSlug },
+        });
 
       if (existingSlug && existingSlug.id !== id) {
         throw new ConflictException(
@@ -166,10 +207,6 @@ export class StoresService {
 
     if (updateStoreDto.address !== undefined) {
       store.address = updateStoreDto.address?.trim() || null;
-    }
-
-    if (updateStoreDto.logo !== undefined) {
-      store.logo = updateStoreDto.logo?.trim() || null;
     }
 
     return this.dataSource.getRepository(Store).save(store);
