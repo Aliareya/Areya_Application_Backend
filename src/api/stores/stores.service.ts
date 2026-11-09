@@ -73,6 +73,12 @@ export class StoresService {
           );
         }
 
+        if(user?.shopId){
+          throw new ForbiddenException(
+            'کاربرانی که به یک فروشگاه متصل هستند نمی‌توانند فروشگاه ایجاد کنند.',
+          );
+        }
+
         const existingStore = await storeRepository.findOne({
           where: { ownerId: user.id },
         });
