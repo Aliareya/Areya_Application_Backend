@@ -30,9 +30,7 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     private readonly dataSource: DataSource,
     @InjectRepository(UserRole)
-  private readonly userRoleRepository: Repository<UserRole>,
-
-
+    private readonly userRoleRepository: Repository<UserRole>,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
@@ -353,32 +351,31 @@ export class UsersService {
   }
 
   async getAuthProfile(userId: string) {
-    // بررسی شناسه کاربر
     if (!userId || !/^\d+$/.test(userId)) {
       throw new BadRequestException('شناسه کاربر معتبر نیست.');
     }
 
-    // دریافت کاربر
     const user = await this.userRepository.findOne({
-      where: { id: userId },
+      where: {
+        id: userId,
+      },
     });
 
     if (!user) {
       throw new NotFoundException('کاربر مورد نظر پیدا نشد.');
     }
 
-    // بررسی فعال بودن حساب کاربری
     if (!user.isActive) {
       throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
     }
 
-    // مقدارهای پیش‌فرض نقش و دسترسی‌ها
     let role: any = null;
     let permissions: any[] = [];
 
-    // دریافت نقش و دسترسی‌های کارمند
+    let userRole: any = null;
+
     if (user.systemRole === SystemRole.EMPLOYEE) {
-      const userRole = await this.userRoleRepository.findOne({
+      userRole = await this.userRoleRepository.findOne({
         where: {
           userId: user.id,
         },
@@ -415,51 +412,32 @@ export class UsersService {
       }
     }
 
-    // دریافت فروشگاه مرتبط با کاربر
     let userStore: Store | null = null;
+    let userShop: Shop | null = null;
 
     if (user.systemRole === SystemRole.EMPLOYEE) {
-      // برای کارمند: دریافت فروشگاه از طریق دکان محل کار
-      const userRole = await this.userRoleRepository.findOne({
-        where: {
-          userId: user.id,
-        },
-      });
+      const employeeShopId = user.shopId ?? userRole?.shopId ?? null;
 
-      if (userRole) {
-        const shop = await this.dataSource.getRepository(Shop).findOne({
+      if (employeeShopId) {
+        userShop = await this.dataSource.getRepository(Shop).findOne({
           where: {
-            id: userRole.shopId,
+            id: employeeShopId,
           },
           relations: {
             store: true,
           },
         });
 
-        userStore = shop?.store ?? null;
+        userStore = userShop?.store ?? null;
       }
     } else {
-      // برای سایر کاربران: دریافت فروشگاه بر اساس مالک
       userStore = await this.dataSource.getRepository(Store).findOne({
         where: {
           ownerId: user.id,
         },
-        select: {
-          id: true,
-          ownerId: true,
-          name: true,
-          slug: true,
-          phone: true,
-          address: true,
-          logo: true,
-          status: true,
-          creationStatus: true,
-          createdAt: true,
-        },
       });
     }
 
-    // آماده‌سازی اطلاعات امن فروشگاه
     const store = userStore
       ? {
           id: userStore.id,
@@ -474,16 +452,33 @@ export class UsersService {
         }
       : null;
 
-    // آماده‌سازی اطلاعات امن کاربر
+    const shop = userShop
+      ? {
+          id: userShop.id,
+          name: userShop.name,
+          slug: userShop.slug,
+          phone: userShop.phone,
+          address: userShop.address,
+          status: userShop.status,
+          createdAt: userShop.createdAt,
+        }
+      : null;
+
     const safeUser = {
       id: user.id,
       fullName: user.fullName,
       phone: user.phone,
       email: user.email,
       systemRole: user.systemRole,
-      shopId: user.shopId,
+
+      shopId:
+        user.systemRole === SystemRole.EMPLOYEE
+          ? (user.shopId ?? userRole?.shopId ?? null)
+          : user.shopId,
+
       isActive: user.isActive,
       store,
+      shop,
     };
 
     return {
