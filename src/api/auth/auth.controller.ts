@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Post,
@@ -44,7 +43,7 @@ export class AuthController {
     response.cookie('areya_access', accessToken, {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'none',
       path: '/',
       maxAge: 12 * 60 * 60 * 1000,
     });
@@ -79,7 +78,7 @@ export class AuthController {
     response.clearCookie('areya_access', {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'none',
       path: '/',
     });
 
@@ -97,7 +96,7 @@ export class AuthController {
     const profile = await this.authService.getProfile(request.user.id);
 
     return {
-      user:{
+      user: {
         ...profile.user,
         role: profile.role,
         permissions: profile.permissions,
