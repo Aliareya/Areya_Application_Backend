@@ -43,8 +43,8 @@ export class AuthController {
 
     response.cookie('areya_access', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: process.env.VERCEL === '1',
+      sameSite: process.env.VERCEL === '1' ? 'none' : 'lax',
       path: '/',
       maxAge: 12 * 60 * 60 * 1000,
     });
