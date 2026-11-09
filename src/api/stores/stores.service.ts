@@ -27,7 +27,6 @@ export class StoresService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  // Validate bigint ID
   private validateId(id: string): void {
     if (!/^[1-9]\d*$/.test(id)) {
       throw new BadRequestException('شناسه واردشده معتبر نیست.');
@@ -42,7 +41,6 @@ export class StoresService {
   ) {
     this.validateId(ownerId);
 
-    // Upload logo to Cloudinary
     let uploadedLogo: { url: string; publicId: string } | null = null;
 
     if (file) {
@@ -73,7 +71,7 @@ export class StoresService {
           );
         }
 
-        if(user?.shopId){
+        if (user?.shopId) {
           throw new ForbiddenException(
             'کاربرانی که به یک فروشگاه متصل هستند نمی‌توانند فروشگاه ایجاد کنند.',
           );
@@ -126,13 +124,10 @@ export class StoresService {
         };
       });
     } catch (error) {
-      // Remove uploaded image if store creation fails
       if (uploadedLogo) {
         try {
           await this.cloudinaryService.removeImage(uploadedLogo.publicId);
-        } catch {
-          // Preserve the original database or validation error
-        }
+        } catch {}
       }
 
       throw error;
@@ -232,4 +227,5 @@ export class StoresService {
 
     return this.dataSource.getRepository(Store).save(store);
   }
+  
 }
