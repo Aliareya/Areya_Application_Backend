@@ -135,15 +135,55 @@ export class StoresService {
   }
 
   // Get all stores
-  async findAll(): Promise<Store[]> {
-    return this.dataSource.getRepository(Store).find({
+  async findAll() {
+    const stores = await this.dataSource.getRepository(Store).find({
       relations: {
         owner: true,
+      },
+      select: {
+        name: true,
+        id: true,
+        status: true,
+        address: true,
+        phone: true,
+        logo: true,
+        owner: {
+          id: true,
+          fullName: true,
+        },
       },
       order: {
         createdAt: 'DESC',
       },
     });
+
+    // Total stores
+    const total_store = stores.length;
+
+    // Active stores
+    const active_store = stores.filter(
+      (store) => store.status === StoreStatus.ACTIVE,
+    ).length;
+
+    // Inactive stores
+    const inactive_store = stores.filter(
+      (store) => store.status === StoreStatus.INACTIVE,
+    ).length;
+
+    // Pending stores
+    const pending_store = stores.filter(
+      (store) => store.status === StoreStatus.PENDING,
+    ).length;
+
+    return {
+      statistics: {
+        total_store,
+        active_store,
+        inactive_store,
+        pending_store,
+      },
+      stores,
+    };
   }
 
   // Get one store
@@ -156,7 +196,9 @@ export class StoresService {
       where: { id },
       relations: {
         owner: true,
-        shops: true,
+        shops: {
+          users:true
+        },
       },
     });
 
@@ -227,5 +269,4 @@ export class StoresService {
 
     return this.dataSource.getRepository(Store).save(store);
   }
-  
 }

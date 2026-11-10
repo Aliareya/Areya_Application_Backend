@@ -15,6 +15,7 @@ import { Shop } from '../../../api/shops/entities/shop.entity';
 export enum StoreStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
+  PENDING = 'pending',
 }
 
 export enum StoreCreationStatus {
@@ -74,7 +75,7 @@ export class Store {
   @Column({
     type: 'enum',
     enum: StoreStatus,
-    default: StoreStatus.INACTIVE,
+    default: StoreStatus.PENDING,
   })
   status!: StoreStatus;
 

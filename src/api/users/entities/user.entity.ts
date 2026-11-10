@@ -20,6 +20,7 @@ export enum SystemRole {
   SUPER_ADMIN = 'super_admin',
   OWNER = 'owner',
   EMPLOYEE = 'employee',
+  STUDENT = 'student',
   USER = 'user',
 }
 
@@ -28,7 +29,7 @@ export enum SystemRole {
 @Check(
   'chk_user_system_role_shop',
   `(
-    ("system_role" = 'employee' AND "shop_id" IS NOT NULL)
+    ("system_role" IN('employee' ,'student') AND "shop_id" IS NOT NULL)
     OR
     ("system_role" IN ('user', 'owner', 'super_admin') AND "shop_id" IS NULL)
   )`,
