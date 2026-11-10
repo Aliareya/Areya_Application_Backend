@@ -83,27 +83,27 @@ export class StoresController {
     return this.storesService.findAll();
   }
 
-   @Roles(SystemRole.SUPER_ADMIN , SystemRole.OWNER)
+  @Roles(SystemRole.SUPER_ADMIN, SystemRole.OWNER)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.storesService.findOne(this.validateId(id));
+  findOne(@Param('id') id: string ,@Req() req) {
+    return this.storesService.findOne(this.validateId(id) , req);
   }
 
   // Update Store
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
-    return this.storesService.update(this.validateId(id), updateStoreDto);
-  }
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
+  //   return this.storesService.update(this.validateId(id), updateStoreDto);
+  // }
 
-  // Activate Store
-  @Patch(':id/activate')
-  activate(@Param('id') id: string) {
-    return this.storesService.activate(this.validateId(id));
-  }
+  // // Activate Store
+  // @Patch(':id/activate')
+  // activate(@Param('id') id: string) {
+  //   return this.storesService.activate(this.validateId(id));
+  // }
 
-  // Deactivate Store
-  @Patch(':id/deactivate')
-  deactivate(@Param('id') id: string) {
-    return this.storesService.deactivate(this.validateId(id));
-  }
+  // // Deactivate Store
+  // @Patch(':id/deactivate')
+  // deactivate(@Param('id') id: string) {
+  //   return this.storesService.deactivate(this.validateId(id));
+  // }
 }

@@ -30,11 +30,11 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('shops/:shopId/roles')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SystemRole.OWNER)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
-
+  
   // Create role
+  @Roles(SystemRole.OWNER)
   @Post()
   create(
     @Req() req: AuthenticatedRequest,
