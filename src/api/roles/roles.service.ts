@@ -91,17 +91,21 @@ export class RolesService {
     return shop;
   }
 
-  // Create role
+  // Create role with permissions
   async create(actorId: string, shopId: string, createRoleDto: CreateRoleDto) {
+    // Check shop ownership
     await this.checkShopOwnership(actorId, shopId);
 
     const name = createRoleDto.name.trim();
     const slug = createRoleDto.slug.trim().toLowerCase();
 
+    const permissionIds = [...new Set(createRoleDto.permissionIds ?? [])];
+
     if (!name || !slug) {
       throw new BadRequestException('نام و شناسه نقش نمی‌توانند خالی باشند.');
     }
 
+    // Check duplicate role slug
     const existingRole = await this.roleRepository.findOne({
       where: {
         shopId,
@@ -115,20 +119,72 @@ export class RolesService {
       );
     }
 
-    const role = this.roleRepository.create({
-      shopId,
-      name,
-      slug,
-      description: createRoleDto.description?.trim() || null,
-    });
+    // Validate permissions
+    if (permissionIds.length > 0) {
+      const allPermissions = await this.permissionsService.findAll();
+
+      const validPermissionIds = new Set(
+        allPermissions.map((permission) => permission.id),
+      );
+
+      const invalidPermissionIds = permissionIds.filter(
+        (permissionId) => !validPermissionIds.has(permissionId),
+      );
+
+      if (invalidPermissionIds.length > 0) {
+        throw new BadRequestException('یک یا چند شناسه دسترسی معتبر نیست.');
+      }
+    }
 
     try {
-      const savedRole = await this.roleRepository.save(role);
+      // Create role and assign permissions transactionally
+      const savedRole = await this.dataSource.transaction(async (manager) => {
+        const roleRepository = manager.getRepository(Role);
+
+        const rolePermissionRepository = manager.getRepository(RolePermission);
+
+        // Create role
+        const role = roleRepository.create({
+          shopId,
+          name,
+          slug,
+          description: createRoleDto.description?.trim() || null,
+        });
+
+        const savedRole = await roleRepository.save(role);
+
+        // Assign permissions
+        if (permissionIds.length > 0) {
+          const rolePermissions = permissionIds.map((permissionId) =>
+            rolePermissionRepository.create({
+              roleId: savedRole.id,
+              permissionId,
+            }),
+          );
+
+          await rolePermissionRepository.save(rolePermissions);
+        }
+
+        return savedRole;
+      });
+
+      // Return created role with permissions
+      const roleWithPermissions = await this.roleRepository.findOne({
+        where: {
+          id: savedRole.id,
+          shopId,
+        },
+        relations: {
+          rolePermissions: {
+            permission: true,
+          },
+        },
+      });
 
       return {
         success: true,
-        message: 'نقش با موفقیت ایجاد شد.',
-        role: savedRole,
+        message: 'نقش و دسترسی‌های آن با موفقیت ایجاد شدند.',
+        role: roleWithPermissions,
       };
     } catch (error) {
       if (

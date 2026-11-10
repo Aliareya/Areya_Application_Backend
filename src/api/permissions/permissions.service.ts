@@ -34,6 +34,11 @@ export class PermissionsService implements OnModuleInit {
   // Get all permissions
   async findAll(): Promise<Permission[]> {
     return this.permissionRepository.find({
+      select:{
+        id:true,
+        name:true,
+        slug:true
+      },
       order: {
         id: 'ASC',
       },

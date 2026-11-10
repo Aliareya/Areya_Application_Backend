@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Post,
@@ -52,17 +51,11 @@ export class StoresController {
         fileSize: 2 * 1024 * 1024,
       },
       fileFilter: (req, file, callback) => {
-        const allowedTypes = [
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-        ];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
         if (!allowedTypes.includes(file.mimetype)) {
           return callback(
-            new BadRequestException(
-              'فرمت تصویر باید JPG، PNG یا WEBP باشد.',
-            ),
+            new BadRequestException('فرمت تصویر باید JPG، PNG یا WEBP باشد.'),
             false,
           );
         }
@@ -85,37 +78,32 @@ export class StoresController {
 
   // Get All Stores
   @Get()
+  @Roles(SystemRole.SUPER_ADMIN)
   findAll() {
     return this.storesService.findAll();
   }
 
-  // Get Single Store
+  @Roles(SystemRole.SUPER_ADMIN, SystemRole.OWNER)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.storesService.findOne(this.validateId(id));
+  findOne(@Param('id') id: string ,@Req() req) {
+    return this.storesService.findOne(this.validateId(id) , req);
   }
 
   // Update Store
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateStoreDto: UpdateStoreDto,
-  ) {
-    return this.storesService.update(
-      this.validateId(id),
-      updateStoreDto,
-    );
-  }
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
+  //   return this.storesService.update(this.validateId(id), updateStoreDto);
+  // }
 
-  // Activate Store
-  @Patch(':id/activate')
-  activate(@Param('id') id: string) {
-    return this.storesService.activate(this.validateId(id));
-  }
+  // // Activate Store
+  // @Patch(':id/activate')
+  // activate(@Param('id') id: string) {
+  //   return this.storesService.activate(this.validateId(id));
+  // }
 
-  // Deactivate Store
-  @Patch(':id/deactivate')
-  deactivate(@Param('id') id: string) {
-    return this.storesService.deactivate(this.validateId(id));
-  }
+  // // Deactivate Store
+  // @Patch(':id/deactivate')
+  // deactivate(@Param('id') id: string) {
+  //   return this.storesService.deactivate(this.validateId(id));
+  // }
 }

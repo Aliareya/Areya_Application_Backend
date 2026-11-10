@@ -1,9 +1,11 @@
+/* eslint-disable no-empty */
 import {
   Injectable,
   NotFoundException,
   ConflictException,
   ForbiddenException,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 
 import { DataSource } from 'typeorm';
@@ -135,20 +137,61 @@ export class StoresService {
   }
 
   // Get all stores
-  async findAll(): Promise<Store[]> {
-    return this.dataSource.getRepository(Store).find({
+  async findAll() {
+    const stores = await this.dataSource.getRepository(Store).find({
       relations: {
         owner: true,
+      },
+      select: {
+        name: true,
+        id: true,
+        status: true,
+        address: true,
+        phone: true,
+        logo: true,
+        owner: {
+          id: true,
+          fullName: true,
+        },
       },
       order: {
         createdAt: 'DESC',
       },
     });
+
+    // Total stores
+    const total_store = stores.length;
+
+    // Active stores
+    const active_store = stores.filter(
+      (store) => store.status === StoreStatus.ACTIVE,
+    ).length;
+
+    // Inactive stores
+    const inactive_store = stores.filter(
+      (store) => store.status === StoreStatus.INACTIVE,
+    ).length;
+
+    // Pending stores
+    const pending_store = stores.filter(
+      (store) => store.status === StoreStatus.PENDING,
+    ).length;
+
+    return {
+      statistics: {
+        total_store,
+        active_store,
+        inactive_store,
+        pending_store,
+      },
+      stores,
+    };
   }
 
   // Get one store
-  async findOne(id: string): Promise<Store> {
+  async findOne(id: string , req): Promise<Store> {
     this.validateId(id);
+    const user_id = req?.user.id
 
     const storeRepository = this.dataSource.getRepository(Store);
 
@@ -156,7 +199,9 @@ export class StoresService {
       where: { id },
       relations: {
         owner: true,
-        shops: true,
+        shops: {
+          users: true,
+        },
       },
     });
 
@@ -164,68 +209,75 @@ export class StoresService {
       throw new NotFoundException('فروشگاه مورد نظر پیدا نشد.');
     }
 
+    if(req.user.systemRole !== SystemRole.SUPER_ADMIN){
+
+      if(store.ownerId !== user_id ){
+        throw new UnauthorizedException("شما به این فروشکاه هیچ ربطی ندارید")
+      }
+    }
+
+
     return store;
   }
 
   // Update store
-  async update(id: string, updateStoreDto: UpdateStoreDto): Promise<Store> {
-    const store = await this.findOne(id);
+  // async update(id: string, updateStoreDto: UpdateStoreDto): Promise<Store> {
+  //   const store = await this.findOne(id);
 
-    if (Object.keys(updateStoreDto).length === 0) {
-      throw new BadRequestException('حداقل یک فیلد برای ویرایش وارد کنید.');
-    }
+  //   if (Object.keys(updateStoreDto).length === 0) {
+  //     throw new BadRequestException('حداقل یک فیلد برای ویرایش وارد کنید.');
+  //   }
 
-    if (updateStoreDto.slug !== undefined) {
-      const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
+  //   if (updateStoreDto.slug !== undefined) {
+  //     const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
 
-      const existingSlug = await this.dataSource.getRepository(Store).findOne({
-        where: { slug: normalizedSlug },
-      });
+  //     const existingSlug = await this.dataSource.getRepository(Store).findOne({
+  //       where: { slug: normalizedSlug },
+  //     });
 
-      if (existingSlug && existingSlug.id !== id) {
-        throw new ConflictException(
-          'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
-        );
-      }
+  //     if (existingSlug && existingSlug.id !== id) {
+  //       throw new ConflictException(
+  //         'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
+  //       );
+  //     }
 
-      store.slug = normalizedSlug;
-    }
+  //     store.slug = normalizedSlug;
+  //   }
 
-    if (updateStoreDto.name !== undefined) {
-      store.name = updateStoreDto.name.trim();
-    }
+  //   if (updateStoreDto.name !== undefined) {
+  //     store.name = updateStoreDto.name.trim();
+  //   }
 
-    if (updateStoreDto.phone !== undefined) {
-      store.phone = updateStoreDto.phone?.trim() || null;
-    }
+  //   if (updateStoreDto.phone !== undefined) {
+  //     store.phone = updateStoreDto.phone?.trim() || null;
+  //   }
 
-    if (updateStoreDto.address !== undefined) {
-      store.address = updateStoreDto.address?.trim() || null;
-    }
+  //   if (updateStoreDto.address !== undefined) {
+  //     store.address = updateStoreDto.address?.trim() || null;
+  //   }
 
-    return this.dataSource.getRepository(Store).save(store);
-  }
+  //   return this.dataSource.getRepository(Store).save(store);
+  // }
 
-  // Activate store
-  async activate(id: string): Promise<Store> {
-    const store = await this.findOne(id);
+  // // Activate store
+  // async activate(id: string): Promise<Store> {
+  //   const store = await this.findOne(id);
 
-    if (store.creationStatus !== StoreCreationStatus.APPROVED) {
-      throw new BadRequestException('فروشگاه هنوز تأیید نشده است.');
-    }
+  //   if (store.creationStatus !== StoreCreationStatus.APPROVED) {
+  //     throw new BadRequestException('فروشگاه هنوز تأیید نشده است.');
+  //   }
 
-    store.status = StoreStatus.ACTIVE;
+  //   store.status = StoreStatus.ACTIVE;
 
-    return this.dataSource.getRepository(Store).save(store);
-  }
+  //   return this.dataSource.getRepository(Store).save(store);
+  // }
 
-  // Deactivate store
-  async deactivate(id: string): Promise<Store> {
-    const store = await this.findOne(id);
+  // // Deactivate store
+  // async deactivate(id: string): Promise<Store> {
+  //   const store = await this.findOne(id);
 
-    store.status = StoreStatus.INACTIVE;
+  //   store.status = StoreStatus.INACTIVE;
 
-    return this.dataSource.getRepository(Store).save(store);
-  }
-  
+  //   return this.dataSource.getRepository(Store).save(store);
+  // }
 }
