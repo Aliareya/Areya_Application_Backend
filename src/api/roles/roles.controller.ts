@@ -45,9 +45,10 @@ export class RolesController {
   }
 
   // Get all roles
+  @Roles(SystemRole.OWNER)
   @Get()
   findAll(@Req() req: AuthenticatedRequest, @Param('shopId') shopId: string) {
-    return this.rolesService.findAll(req.user.id, shopId);
+    return this.rolesService.findAllroleOfShop(req.user.id, shopId);
   }
 
   // Get one role

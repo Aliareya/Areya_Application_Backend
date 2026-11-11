@@ -22,6 +22,7 @@ import * as bcrypt from 'bcrypt';
 import { UserResponseDto } from './dto/user-response.dto';
 import { AssignUserRoleDto } from './dto/assign-user-role.dto';
 import { Store } from '../stores/entities/store.entity';
+import { CreateShopUserDto } from './dto/create-shop-employee.dto';
 
 @Injectable()
 export class UsersService {
@@ -374,7 +375,10 @@ export class UsersService {
 
     let userRole: any = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE) {
+    if (
+      user.systemRole === SystemRole.EMPLOYEE ||
+      user.systemRole === SystemRole.STUDENT
+    ) {
       userRole = await this.userRoleRepository.findOne({
         where: {
           userId: user.id,
@@ -415,7 +419,10 @@ export class UsersService {
     let userStore: Store | null = null;
     let userShop: Shop | null = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE) {
+    if (
+      user.systemRole === SystemRole.EMPLOYEE ||
+      user.systemRole === SystemRole.STUDENT
+    ) {
       const employeeShopId = user.shopId ?? userRole?.shopId ?? null;
 
       if (employeeShopId) {
@@ -487,5 +494,145 @@ export class UsersService {
       role,
       permissions,
     };
+  }
+
+  async createShopEmployee(
+    actorId: string,
+    shopId: string,
+    dto: CreateShopUserDto,
+  ) {
+    // 1. Validate identifiers
+    if (
+      !/^[1-9]\d*$/.test(actorId) ||
+      !/^[1-9]\d*$/.test(shopId) ||
+      !/^[1-9]\d*$/.test(dto.roleId)
+    ) {
+      throw new BadRequestException('شناسه واردشده نامعتبر است.');
+    }
+
+    // 2. Normalize input
+    const fullName = dto.fullName.trim();
+    const phone = dto.phone.trim();
+    const email = dto.email?.trim().toLowerCase() || null;
+
+    if (!fullName || !phone) {
+      throw new BadRequestException('نام و شماره تماس الزامی است.');
+    }
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const userRepository = manager.getRepository(User);
+        const shopRepository = manager.getRepository(Shop);
+        const roleRepository = manager.getRepository(Role);
+        const userRoleRepository = manager.getRepository(UserRole);
+
+        // 3. Verify owner
+        const owner = await userRepository.findOne({
+          where: {
+            id: actorId,
+            systemRole: SystemRole.OWNER,
+            isActive: true,
+          },
+        });
+
+        if (!owner) {
+          throw new ForbiddenException('شما اجازه ایجاد کارمند را ندارید.');
+        }
+
+        // 4. Verify shop ownership
+        const shop = await shopRepository.findOne({
+          where: {
+            id: shopId,
+          },
+          relations: {
+            store: true,
+          },
+        });
+
+        if (!shop || shop.store?.ownerId !== owner.id) {
+          throw new NotFoundException('دکان پیدا نشد یا شما مالک آن نیستید.');
+        }
+
+        // 5. Check shop status
+        if (shop.status !== ShopStatus.ACTIVE) {
+          throw new ForbiddenException(
+            'در دکان غیرفعال امکان ایجاد کارمند وجود ندارد.',
+          );
+        }
+
+        // 6. Verify role belongs to this shop
+        const role = await roleRepository.findOne({
+          where: {
+            id: dto.roleId,
+            shopId,
+          },
+        });
+
+        if (!role) {
+          throw new NotFoundException('نقش موردنظر در این دکان پیدا نشد.');
+        }
+
+        // 7. Hash password
+        const hashedPassword = await bcrypt.hash(dto.password, 12);
+
+        // 8. Create employee
+        const employee = userRepository.create({
+          fullName,
+          phone,
+          email,
+          password: hashedPassword,
+          systemRole: SystemRole.EMPLOYEE,
+          shopId,
+          isActive: true,
+        });
+
+        const savedEmployee = await userRepository.save(employee);
+
+        // 9. Assign role
+        const userRole = userRoleRepository.create({
+          userId: savedEmployee.id,
+          roleId: role.id,
+          shopId,
+        });
+
+        await userRoleRepository.save(userRole);
+
+        // 10. Safe response
+        return {
+          success: true,
+          message: 'کارمند با موفقیت ایجاد شد.',
+
+          employee: {
+            id: savedEmployee.id,
+            fullName: savedEmployee.fullName,
+            phone: savedEmployee.phone,
+            email: savedEmployee.email,
+            avatar: savedEmployee.avatar,
+            systemRole: savedEmployee.systemRole,
+            shopId: savedEmployee.shopId,
+            isActive: savedEmployee.isActive,
+            createdAt: savedEmployee.createdAt,
+          },
+
+          role: {
+            id: role.id,
+            name: role.name,
+            slug: role.slug,
+          },
+        };
+      });
+    } catch (error) {
+      // 11. Handle unique constraint violations
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException(
+          'شماره تماس یا ایمیل واردشده قبلاً ثبت شده است.',
+        );
+      }
+
+      throw error;
+    }
   }
 }

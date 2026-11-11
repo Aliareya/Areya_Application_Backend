@@ -219,6 +219,17 @@ export class RolesService {
     });
   }
 
+  async findAllroleOfShop(actorId: string, shopId: string) {
+    await this.checkShopOwnership(actorId, shopId);
+
+    return this.roleRepository.find({
+      where: { shopId },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
   // Get one role
   async findOne(actorId: string, shopId: string, id: string) {
     await this.checkShopOwnership(actorId, shopId);
