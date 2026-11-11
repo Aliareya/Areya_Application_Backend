@@ -375,7 +375,10 @@ export class UsersService {
 
     let userRole: any = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE || user.systemRole === SystemRole.STUDENT) {
+    if (
+      user.systemRole === SystemRole.EMPLOYEE ||
+      user.systemRole === SystemRole.STUDENT
+    ) {
       userRole = await this.userRoleRepository.findOne({
         where: {
           userId: user.id,
@@ -416,7 +419,10 @@ export class UsersService {
     let userStore: Store | null = null;
     let userShop: Shop | null = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE || user.systemRole === SystemRole.STUDENT) {
+    if (
+      user.systemRole === SystemRole.EMPLOYEE ||
+      user.systemRole === SystemRole.STUDENT
+    ) {
       const employeeShopId = user.shopId ?? userRole?.shopId ?? null;
 
       if (employeeShopId) {
@@ -495,67 +501,32 @@ export class UsersService {
     shopId: string,
     dto: CreateShopUserDto,
   ) {
-    let stage = 'START';
+    // 1. Validate identifiers
+    if (
+      !/^[1-9]\d*$/.test(actorId) ||
+      !/^[1-9]\d*$/.test(shopId) ||
+      !/^[1-9]\d*$/.test(dto.roleId)
+    ) {
+      throw new BadRequestException('شناسه واردشده نامعتبر است.');
+    }
+
+    // 2. Normalize input
+    const fullName = dto.fullName.trim();
+    const phone = dto.phone.trim();
+    const email = dto.email?.trim().toLowerCase() || null;
+
+    if (!fullName || !phone) {
+      throw new BadRequestException('نام و شماره تماس الزامی است.');
+    }
 
     try {
-      // ==========================================
-      // 1. Validate input IDs
-      // ==========================================
-
-      stage = 'VALIDATE_IDS';
-
-      if (
-        !/^[1-9]\d*$/.test(actorId) ||
-        !/^[1-9]\d*$/.test(shopId) ||
-        !/^[1-9]\d*$/.test(dto.roleId)
-      ) {
-        throw new BadRequestException('شناسه واردشده نامعتبر است.');
-      }
-
-      // ==========================================
-      // 2. Validate required fields
-      // ==========================================
-
-      stage = 'VALIDATE_FIELDS';
-
-      if (
-        !dto.fullName?.trim() ||
-        !dto.phone?.trim() ||
-        !dto.password ||
-        !dto.systemRole ||
-        !dto.roleId
-      ) {
-        throw new BadRequestException('تمام فیلدهای اجباری باید تکمیل شوند.');
-      }
-
-      if (![SystemRole.EMPLOYEE, SystemRole.STUDENT].includes(dto.systemRole)) {
-        throw new BadRequestException('نوع کاربر باید مدیر یا شاگرد باشد.');
-      }
-
-      // ==========================================
-      // 3. Hash password
-      // ==========================================
-
-      stage = 'HASH_PASSWORD';
-
-      const hashedPassword = await bcrypt.hash(dto.password, 12);
-
-      // ==========================================
-      // 4. Database transaction
-      // ==========================================
-
       return await this.dataSource.transaction(async (manager) => {
         const userRepository = manager.getRepository(User);
         const shopRepository = manager.getRepository(Shop);
         const roleRepository = manager.getRepository(Role);
         const userRoleRepository = manager.getRepository(UserRole);
 
-        // ==========================================
-        // 5. Verify authenticated owner
-        // ==========================================
-
-        stage = 'CHECK_OWNER';
-
+        // 3. Verify owner
         const owner = await userRepository.findOne({
           where: {
             id: actorId,
@@ -565,17 +536,10 @@ export class UsersService {
         });
 
         if (!owner) {
-          throw new ForbiddenException(
-            'شما اجازه ایجاد کاربر در این دکان را ندارید.',
-          );
+          throw new ForbiddenException('شما اجازه ایجاد کارمند را ندارید.');
         }
 
-        // ==========================================
-        // 6. Verify shop ownership
-        // ==========================================
-
-        stage = 'CHECK_SHOP';
-
+        // 4. Verify shop ownership
         const shop = await shopRepository.findOne({
           where: {
             id: shopId,
@@ -585,28 +549,18 @@ export class UsersService {
           },
         });
 
-        if (!shop || !shop.store || shop.store.ownerId !== owner.id) {
+        if (!shop || shop.store?.ownerId !== owner.id) {
           throw new NotFoundException('دکان پیدا نشد یا شما مالک آن نیستید.');
         }
 
-        // ==========================================
-        // 7. Check shop status
-        // ==========================================
-
-        stage = 'CHECK_SHOP_STATUS';
-
+        // 5. Check shop status
         if (shop.status !== ShopStatus.ACTIVE) {
           throw new ForbiddenException(
-            'در دکان غیرفعال امکان ایجاد کاربر وجود ندارد.',
+            'در دکان غیرفعال امکان ایجاد کارمند وجود ندارد.',
           );
         }
 
-        // ==========================================
-        // 8. Verify role belongs to this shop
-        // ==========================================
-
-        stage = 'CHECK_ROLE';
-
+        // 6. Verify role belongs to this shop
         const role = await roleRepository.findOne({
           where: {
             id: dto.roleId,
@@ -615,110 +569,49 @@ export class UsersService {
         });
 
         if (!role) {
-          throw new NotFoundException('نقش انتخاب‌شده در این دکان پیدا نشد.');
+          throw new NotFoundException('نقش موردنظر در این دکان پیدا نشد.');
         }
 
-        // ==========================================
-        // 9. Normalize email
-        // ==========================================
+        // 7. Hash password
+        const hashedPassword = await bcrypt.hash(dto.password, 12);
 
-        stage = 'NORMALIZE_DATA';
-
-        const normalizedEmail = dto.email?.trim().toLowerCase() || null;
-
-        const normalizedFullName = dto.fullName.trim();
-
-        // ==========================================
-        // 10. Check duplicate phone
-        // ==========================================
-
-        stage = 'CHECK_DUPLICATE_PHONE';
-
-        const existingPhone = await userRepository.findOne({
-          where: {
-            phone: dto.phone,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        if (existingPhone) {
-          throw new ConflictException('این شماره تماس قبلاً ثبت شده است.');
-        }
-
-        // ==========================================
-        // 11. Check duplicate email
-        // ==========================================
-
-        if (normalizedEmail) {
-          stage = 'CHECK_DUPLICATE_EMAIL';
-
-          const existingEmail = await userRepository.findOne({
-            where: {
-              email: normalizedEmail,
-            },
-            select: {
-              id: true,
-            },
-          });
-
-          if (existingEmail) {
-            throw new ConflictException('این ایمیل قبلاً ثبت شده است.');
-          }
-        }
-
-        // ==========================================
-        // 12. Create user
-        // ==========================================
-
-        stage = 'CREATE_USER';
-
-        const shopUser = userRepository.create({
-          fullName: normalizedFullName,
-          phone: dto.phone,
-          email: normalizedEmail,
+        // 8. Create employee
+        const employee = userRepository.create({
+          fullName,
+          phone,
+          email,
           password: hashedPassword,
-          systemRole: dto.systemRole,
+          systemRole: SystemRole.EMPLOYEE,
           shopId,
           isActive: true,
         });
 
-        const savedUser = await userRepository.save(shopUser);
+        const savedEmployee = await userRepository.save(employee);
 
-        // ==========================================
-        // 13. Assign role to user
-        // ==========================================
-
-        stage = 'ASSIGN_USER_ROLE';
-
+        // 9. Assign role
         const userRole = userRoleRepository.create({
-          userId: savedUser.id,
+          userId: savedEmployee.id,
           roleId: role.id,
           shopId,
         });
 
         await userRoleRepository.save(userRole);
 
-        // ==========================================
-        // 14. Return safe response
-        // ==========================================
-
-        stage = 'RETURN_RESPONSE';
-
+        // 10. Safe response
         return {
           success: true,
-          message: 'کاربر دکان با موفقیت ایجاد شد.',
+          message: 'کارمند با موفقیت ایجاد شد.',
 
-          user: {
-            id: savedUser.id,
-            fullName: savedUser.fullName,
-            phone: savedUser.phone,
-            email: savedUser.email,
-            systemRole: savedUser.systemRole,
-            shopId: savedUser.shopId,
-            isActive: savedUser.isActive,
-            createdAt: savedUser.createdAt,
+          employee: {
+            id: savedEmployee.id,
+            fullName: savedEmployee.fullName,
+            phone: savedEmployee.phone,
+            email: savedEmployee.email,
+            avatar: savedEmployee.avatar,
+            systemRole: savedEmployee.systemRole,
+            shopId: savedEmployee.shopId,
+            isActive: savedEmployee.isActive,
+            createdAt: savedEmployee.createdAt,
           },
 
           role: {
@@ -726,61 +619,17 @@ export class UsersService {
             name: role.name,
             slug: role.slug,
           },
-
-          shop: {
-            id: shop.id,
-            name: shop.name,
-          },
         };
       });
     } catch (error) {
-      // ==========================================
-      // 15. Log actual error
-      // ==========================================
-
-      console.error('\n======================================');
-      console.error('[CREATE SHOP EMPLOYEE FAILED]');
-      console.error('Stage:', stage);
-
-      if (error instanceof Error) {
-        console.error('Error Name:', error.name);
-        console.error('Error Message:', error.message);
-        console.error('Stack:', error.stack);
-      } else {
-        console.error('Unknown Error:', error);
-      }
-
-      if (error instanceof QueryFailedError) {
-        console.error('Database Error:', error.driverError);
-      }
-
-      console.error('======================================\n');
-
-      // ==========================================
-      // 16. Handle duplicate database constraints
-      // ==========================================
-
-      if (error instanceof QueryFailedError) {
-        const dbError = error.driverError as {
-          code?: string;
-          constraint?: string;
-        };
-
-        if (dbError.code === '23505') {
-          const constraint = dbError.constraint ?? '';
-
-          if (constraint.includes('phone')) {
-            throw new ConflictException('این شماره تماس قبلاً ثبت شده است.');
-          }
-
-          if (constraint.includes('email')) {
-            throw new ConflictException('این ایمیل قبلاً ثبت شده است.');
-          }
-
-          throw new ConflictException(
-            'اطلاعات تکراری است و امکان ثبت آن وجود ندارد.',
-          );
-        }
+      // 11. Handle unique constraint violations
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException(
+          'شماره تماس یا ایمیل واردشده قبلاً ثبت شده است.',
+        );
       }
 
       throw error;
