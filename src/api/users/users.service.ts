@@ -22,6 +22,7 @@ import * as bcrypt from 'bcrypt';
 import { UserResponseDto } from './dto/user-response.dto';
 import { AssignUserRoleDto } from './dto/assign-user-role.dto';
 import { Store } from '../stores/entities/store.entity';
+import { CreateShopUserDto } from './dto/create-shop-employee.dto';
 
 @Injectable()
 export class UsersService {
@@ -374,7 +375,7 @@ export class UsersService {
 
     let userRole: any = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE) {
+    if (user.systemRole === SystemRole.EMPLOYEE || user.systemRole === SystemRole.STUDENT) {
       userRole = await this.userRoleRepository.findOne({
         where: {
           userId: user.id,
@@ -415,7 +416,7 @@ export class UsersService {
     let userStore: Store | null = null;
     let userShop: Shop | null = null;
 
-    if (user.systemRole === SystemRole.EMPLOYEE) {
+    if (user.systemRole === SystemRole.EMPLOYEE || user.systemRole === SystemRole.STUDENT) {
       const employeeShopId = user.shopId ?? userRole?.shopId ?? null;
 
       if (employeeShopId) {
@@ -487,5 +488,302 @@ export class UsersService {
       role,
       permissions,
     };
+  }
+
+  async createShopEmployee(
+    actorId: string,
+    shopId: string,
+    dto: CreateShopUserDto,
+  ) {
+    let stage = 'START';
+
+    try {
+      // ==========================================
+      // 1. Validate input IDs
+      // ==========================================
+
+      stage = 'VALIDATE_IDS';
+
+      if (
+        !/^[1-9]\d*$/.test(actorId) ||
+        !/^[1-9]\d*$/.test(shopId) ||
+        !/^[1-9]\d*$/.test(dto.roleId)
+      ) {
+        throw new BadRequestException('شناسه واردشده نامعتبر است.');
+      }
+
+      // ==========================================
+      // 2. Validate required fields
+      // ==========================================
+
+      stage = 'VALIDATE_FIELDS';
+
+      if (
+        !dto.fullName?.trim() ||
+        !dto.phone?.trim() ||
+        !dto.password ||
+        !dto.systemRole ||
+        !dto.roleId
+      ) {
+        throw new BadRequestException('تمام فیلدهای اجباری باید تکمیل شوند.');
+      }
+
+      if (![SystemRole.EMPLOYEE, SystemRole.STUDENT].includes(dto.systemRole)) {
+        throw new BadRequestException('نوع کاربر باید مدیر یا شاگرد باشد.');
+      }
+
+      // ==========================================
+      // 3. Hash password
+      // ==========================================
+
+      stage = 'HASH_PASSWORD';
+
+      const hashedPassword = await bcrypt.hash(dto.password, 12);
+
+      // ==========================================
+      // 4. Database transaction
+      // ==========================================
+
+      return await this.dataSource.transaction(async (manager) => {
+        const userRepository = manager.getRepository(User);
+        const shopRepository = manager.getRepository(Shop);
+        const roleRepository = manager.getRepository(Role);
+        const userRoleRepository = manager.getRepository(UserRole);
+
+        // ==========================================
+        // 5. Verify authenticated owner
+        // ==========================================
+
+        stage = 'CHECK_OWNER';
+
+        const owner = await userRepository.findOne({
+          where: {
+            id: actorId,
+            systemRole: SystemRole.OWNER,
+            isActive: true,
+          },
+        });
+
+        if (!owner) {
+          throw new ForbiddenException(
+            'شما اجازه ایجاد کاربر در این دکان را ندارید.',
+          );
+        }
+
+        // ==========================================
+        // 6. Verify shop ownership
+        // ==========================================
+
+        stage = 'CHECK_SHOP';
+
+        const shop = await shopRepository.findOne({
+          where: {
+            id: shopId,
+          },
+          relations: {
+            store: true,
+          },
+        });
+
+        if (!shop || !shop.store || shop.store.ownerId !== owner.id) {
+          throw new NotFoundException('دکان پیدا نشد یا شما مالک آن نیستید.');
+        }
+
+        // ==========================================
+        // 7. Check shop status
+        // ==========================================
+
+        stage = 'CHECK_SHOP_STATUS';
+
+        if (shop.status !== ShopStatus.ACTIVE) {
+          throw new ForbiddenException(
+            'در دکان غیرفعال امکان ایجاد کاربر وجود ندارد.',
+          );
+        }
+
+        // ==========================================
+        // 8. Verify role belongs to this shop
+        // ==========================================
+
+        stage = 'CHECK_ROLE';
+
+        const role = await roleRepository.findOne({
+          where: {
+            id: dto.roleId,
+            shopId,
+          },
+        });
+
+        if (!role) {
+          throw new NotFoundException('نقش انتخاب‌شده در این دکان پیدا نشد.');
+        }
+
+        // ==========================================
+        // 9. Normalize email
+        // ==========================================
+
+        stage = 'NORMALIZE_DATA';
+
+        const normalizedEmail = dto.email?.trim().toLowerCase() || null;
+
+        const normalizedFullName = dto.fullName.trim();
+
+        // ==========================================
+        // 10. Check duplicate phone
+        // ==========================================
+
+        stage = 'CHECK_DUPLICATE_PHONE';
+
+        const existingPhone = await userRepository.findOne({
+          where: {
+            phone: dto.phone,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (existingPhone) {
+          throw new ConflictException('این شماره تماس قبلاً ثبت شده است.');
+        }
+
+        // ==========================================
+        // 11. Check duplicate email
+        // ==========================================
+
+        if (normalizedEmail) {
+          stage = 'CHECK_DUPLICATE_EMAIL';
+
+          const existingEmail = await userRepository.findOne({
+            where: {
+              email: normalizedEmail,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          if (existingEmail) {
+            throw new ConflictException('این ایمیل قبلاً ثبت شده است.');
+          }
+        }
+
+        // ==========================================
+        // 12. Create user
+        // ==========================================
+
+        stage = 'CREATE_USER';
+
+        const shopUser = userRepository.create({
+          fullName: normalizedFullName,
+          phone: dto.phone,
+          email: normalizedEmail,
+          password: hashedPassword,
+          systemRole: dto.systemRole,
+          shopId,
+          isActive: true,
+        });
+
+        const savedUser = await userRepository.save(shopUser);
+
+        // ==========================================
+        // 13. Assign role to user
+        // ==========================================
+
+        stage = 'ASSIGN_USER_ROLE';
+
+        const userRole = userRoleRepository.create({
+          userId: savedUser.id,
+          roleId: role.id,
+          shopId,
+        });
+
+        await userRoleRepository.save(userRole);
+
+        // ==========================================
+        // 14. Return safe response
+        // ==========================================
+
+        stage = 'RETURN_RESPONSE';
+
+        return {
+          success: true,
+          message: 'کاربر دکان با موفقیت ایجاد شد.',
+
+          user: {
+            id: savedUser.id,
+            fullName: savedUser.fullName,
+            phone: savedUser.phone,
+            email: savedUser.email,
+            systemRole: savedUser.systemRole,
+            shopId: savedUser.shopId,
+            isActive: savedUser.isActive,
+            createdAt: savedUser.createdAt,
+          },
+
+          role: {
+            id: role.id,
+            name: role.name,
+            slug: role.slug,
+          },
+
+          shop: {
+            id: shop.id,
+            name: shop.name,
+          },
+        };
+      });
+    } catch (error) {
+      // ==========================================
+      // 15. Log actual error
+      // ==========================================
+
+      console.error('\n======================================');
+      console.error('[CREATE SHOP EMPLOYEE FAILED]');
+      console.error('Stage:', stage);
+
+      if (error instanceof Error) {
+        console.error('Error Name:', error.name);
+        console.error('Error Message:', error.message);
+        console.error('Stack:', error.stack);
+      } else {
+        console.error('Unknown Error:', error);
+      }
+
+      if (error instanceof QueryFailedError) {
+        console.error('Database Error:', error.driverError);
+      }
+
+      console.error('======================================\n');
+
+      // ==========================================
+      // 16. Handle duplicate database constraints
+      // ==========================================
+
+      if (error instanceof QueryFailedError) {
+        const dbError = error.driverError as {
+          code?: string;
+          constraint?: string;
+        };
+
+        if (dbError.code === '23505') {
+          const constraint = dbError.constraint ?? '';
+
+          if (constraint.includes('phone')) {
+            throw new ConflictException('این شماره تماس قبلاً ثبت شده است.');
+          }
+
+          if (constraint.includes('email')) {
+            throw new ConflictException('این ایمیل قبلاً ثبت شده است.');
+          }
+
+          throw new ConflictException(
+            'اطلاعات تکراری است و امکان ثبت آن وجود ندارد.',
+          );
+        }
+      }
+
+      throw error;
+    }
   }
 }

@@ -1,11 +1,9 @@
-/* eslint-disable no-empty */
 import {
   Injectable,
   NotFoundException,
   ConflictException,
   ForbiddenException,
   BadRequestException,
-  UnauthorizedException,
 } from '@nestjs/common';
 
 import { DataSource } from 'typeorm';
@@ -19,8 +17,14 @@ import {
 import { User, SystemRole } from '../users/entities/user.entity';
 
 import { CreateStoreDto } from './dto/create-store.dto';
-import { UpdateStoreDto } from './dto/update-store.dto';
 import { CloudinaryService } from '../../cloudinary/cloudinary.service';
+
+interface AuthenticatedRequest {
+  user?: {
+    id: string;
+    systemRole: SystemRole;
+  };
+}
 
 @Injectable()
 export class StoresService {
@@ -29,8 +33,9 @@ export class StoresService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
+  // Validate ID
   private validateId(id: string): void {
-    if (!/^[1-9]\d*$/.test(id)) {
+    if (!id || !/^[1-9]\d*$/.test(id)) {
       throw new BadRequestException('شناسه واردشده معتبر نیست.');
     }
   }
@@ -45,11 +50,12 @@ export class StoresService {
 
     let uploadedLogo: { url: string; publicId: string } | null = null;
 
-    if (file) {
-      uploadedLogo = await this.cloudinaryService.uploadFile(file);
-    }
-
     try {
+      // Upload logo
+      if (file) {
+        uploadedLogo = await this.cloudinaryService.uploadFile(file);
+      }
+
       return await this.dataSource.transaction(async (manager) => {
         const userRepository = manager.getRepository(User);
         const storeRepository = manager.getRepository(Store);
@@ -73,9 +79,9 @@ export class StoresService {
           );
         }
 
-        if (user?.shopId) {
+        if (user.shopId) {
           throw new ForbiddenException(
-            'کاربرانی که به یک فروشگاه متصل هستند نمی‌توانند فروشگاه ایجاد کنند.',
+            'کاربرانی که به یک دکان متصل هستند نمی‌توانند فروشگاه ایجاد کنند.',
           );
         }
 
@@ -114,8 +120,9 @@ export class StoresService {
         });
 
         const savedStore = await storeRepository.save(store);
-        user.systemRole = SystemRole.OWNER;
 
+        // Change user role to OWNER
+        user.systemRole = SystemRole.OWNER;
         await userRepository.save(user);
 
         return {
@@ -126,72 +133,94 @@ export class StoresService {
         };
       });
     } catch (error) {
+      // Remove uploaded logo if database transaction fails
       if (uploadedLogo) {
         try {
           await this.cloudinaryService.removeImage(uploadedLogo.publicId);
-        } catch {}
+        } catch {
+          // Ignore Cloudinary cleanup errors
+        }
+      }
+
+      // Handle database unique constraint violations
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === '23505'
+      ) {
+        throw new ConflictException('این شناسه یا فروشگاه قبلاً ثبت شده است.');
       }
 
       throw error;
     }
   }
 
-  // Get all stores
+  // Get all stores (Super Admin)
   async findAll() {
-    const stores = await this.dataSource.getRepository(Store).find({
-      relations: {
-        owner: true,
-      },
-      select: {
-        name: true,
-        id: true,
-        status: true,
-        address: true,
-        phone: true,
-        logo: true,
-        owner: {
-          id: true,
-          fullName: true,
-        },
-      },
-      order: {
-        createdAt: 'DESC',
-      },
-    });
+    const storeRepository = this.dataSource.getRepository(Store);
 
-    // Total stores
-    const total_store = stores.length;
+    const [stores, totalStore, activeStore, inactiveStore, pendingStore] =
+      await Promise.all([
+        storeRepository.find({
+          relations: {
+            owner: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            status: true,
+            creationStatus: true,
+            address: true,
+            phone: true,
+            logo: true,
+            createdAt: true,
+            owner: {
+              id: true,
+              fullName: true,
+            },
+          },
+          order: {
+            createdAt: 'DESC',
+          },
+        }),
 
-    // Active stores
-    const active_store = stores.filter(
-      (store) => store.status === StoreStatus.ACTIVE,
-    ).length;
+        storeRepository.count(),
 
-    // Inactive stores
-    const inactive_store = stores.filter(
-      (store) => store.status === StoreStatus.INACTIVE,
-    ).length;
+        storeRepository.count({
+          where: { status: StoreStatus.ACTIVE },
+        }),
 
-    // Pending stores
-    const pending_store = stores.filter(
-      (store) => store.status === StoreStatus.PENDING,
-    ).length;
+        storeRepository.count({
+          where: { status: StoreStatus.INACTIVE },
+        }),
+
+        storeRepository.count({
+          where: {
+            creationStatus: StoreCreationStatus.PENDING,
+          },
+        }),
+      ]);
 
     return {
       statistics: {
-        total_store,
-        active_store,
-        inactive_store,
-        pending_store,
+        total_store: totalStore,
+        active_store: activeStore,
+        inactive_store: inactiveStore,
+        pending_store: pendingStore,
       },
       stores,
     };
   }
 
   // Get one store
-  async findOne(id: string , req): Promise<Store> {
+  async findOne(id: string, req: AuthenticatedRequest): Promise<Store> {
     this.validateId(id);
-    const user_id = req?.user.id
+
+    if (!req?.user?.id || !req.user.systemRole) {
+      throw new ForbiddenException('دسترسی معتبر نیست.');
+    }
 
     const storeRepository = this.dataSource.getRepository(Store);
 
@@ -200,7 +229,26 @@ export class StoresService {
       relations: {
         owner: true,
         shops: {
-          users: true,
+          users:true
+        },
+      },
+      select: {
+        id: true,
+        ownerId: true,
+        name: true,
+        slug: true,
+        phone: true,
+        address: true,
+        logo: true,
+        status: true,
+        creationStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        owner: {
+          id: true,
+          fullName: true,
+          phone:true,
+          email:true
         },
       },
     });
@@ -209,75 +257,52 @@ export class StoresService {
       throw new NotFoundException('فروشگاه مورد نظر پیدا نشد.');
     }
 
-    if(req.user.systemRole !== SystemRole.SUPER_ADMIN){
-
-      if(store.ownerId !== user_id ){
-        throw new UnauthorizedException("شما به این فروشکاه هیچ ربطی ندارید")
-      }
+    // Super Admin can access all stores
+    if (req.user.systemRole === SystemRole.SUPER_ADMIN) {
+      return store;
     }
 
+    // Only the store owner can access their store
+    if (
+      req.user.systemRole !== SystemRole.OWNER ||
+      store.ownerId !== req.user.id
+    ) {
+      throw new ForbiddenException(
+        'شما اجازه دسترسی به این فروشگاه را ندارید.',
+      );
+    }
 
     return store;
   }
 
-  // Update store
-  // async update(id: string, updateStoreDto: UpdateStoreDto): Promise<Store> {
-  //   const store = await this.findOne(id);
+  // Activate store
+  async activate(
+    id: string,
+    actorRole: SystemRole,
+    status: StoreStatus,
+  ): Promise<Store> {
+    this.validateId(id);
 
-  //   if (Object.keys(updateStoreDto).length === 0) {
-  //     throw new BadRequestException('حداقل یک فیلد برای ویرایش وارد کنید.');
-  //   }
+    // Only Super Admin can activate stores
+    if (actorRole !== SystemRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'فقط مدیر سیستم اجازه فعال‌سازی فروشگاه را دارد.',
+      );
+    }
 
-  //   if (updateStoreDto.slug !== undefined) {
-  //     const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
+    const storeRepository = this.dataSource.getRepository(Store);
 
-  //     const existingSlug = await this.dataSource.getRepository(Store).findOne({
-  //       where: { slug: normalizedSlug },
-  //     });
+    const store = await storeRepository.findOne({
+      where: { id },
+    });
 
-  //     if (existingSlug && existingSlug.id !== id) {
-  //       throw new ConflictException(
-  //         'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
-  //       );
-  //     }
+    if (!store) {
+      throw new NotFoundException('فروشگاه مورد نظر پیدا نشد.');
+    }
 
-  //     store.slug = normalizedSlug;
-  //   }
+    store.creationStatus = StoreCreationStatus.APPROVED;
+    store.status = status;
 
-  //   if (updateStoreDto.name !== undefined) {
-  //     store.name = updateStoreDto.name.trim();
-  //   }
-
-  //   if (updateStoreDto.phone !== undefined) {
-  //     store.phone = updateStoreDto.phone?.trim() || null;
-  //   }
-
-  //   if (updateStoreDto.address !== undefined) {
-  //     store.address = updateStoreDto.address?.trim() || null;
-  //   }
-
-  //   return this.dataSource.getRepository(Store).save(store);
-  // }
-
-  // // Activate store
-  // async activate(id: string): Promise<Store> {
-  //   const store = await this.findOne(id);
-
-  //   if (store.creationStatus !== StoreCreationStatus.APPROVED) {
-  //     throw new BadRequestException('فروشگاه هنوز تأیید نشده است.');
-  //   }
-
-  //   store.status = StoreStatus.ACTIVE;
-
-  //   return this.dataSource.getRepository(Store).save(store);
-  // }
-
-  // // Deactivate store
-  // async deactivate(id: string): Promise<Store> {
-  //   const store = await this.findOne(id);
-
-  //   store.status = StoreStatus.INACTIVE;
-
-  //   return this.dataSource.getRepository(Store).save(store);
-  // }
+    return storeRepository.save(store);
+  }
 }

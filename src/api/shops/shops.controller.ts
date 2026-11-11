@@ -25,14 +25,16 @@ import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { User } from '../users/entities/user.entity';
+import { SystemRole, User } from '../users/entities/user.entity';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from 'src/common/decorator/roles.decorator';
 
 interface AuthenticatedRequest extends Request {
   user: User;
 }
 
 @Controller('stores/:storeId/shops')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard , RolesGuard)
 export class ShopsController {
   constructor(
     private readonly shopsService: ShopsService,
@@ -48,6 +50,7 @@ export class ShopsController {
 
   // Create shop
   @Post()
+  @Roles(SystemRole.OWNER)
   @UseInterceptors(
     FileInterceptor('logo', {
       storage: memoryStorage(),

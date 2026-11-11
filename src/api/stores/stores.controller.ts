@@ -26,6 +26,7 @@ import { Roles } from '../../common/decorator/roles.decorator';
 
 import { SystemRole } from '../users/entities/user.entity';
 import { AuthenticatedRequest } from '../../common/interfaces/authenticated-request.interface';
+import { StoreStatus } from './entities/store.entity';
 
 @Controller('stores')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -85,8 +86,8 @@ export class StoresController {
 
   @Roles(SystemRole.SUPER_ADMIN, SystemRole.OWNER)
   @Get(':id')
-  findOne(@Param('id') id: string ,@Req() req) {
-    return this.storesService.findOne(this.validateId(id) , req);
+  findOne(@Param('id') id: string, @Req() req) {
+    return this.storesService.findOne(this.validateId(id), req);
   }
 
   // Update Store
@@ -95,11 +96,16 @@ export class StoresController {
   //   return this.storesService.update(this.validateId(id), updateStoreDto);
   // }
 
-  // // Activate Store
-  // @Patch(':id/activate')
-  // activate(@Param('id') id: string) {
-  //   return this.storesService.activate(this.validateId(id));
-  // }
+  // Activate Store
+  @Patch(':id/activate')
+  activate(
+    @Param('id') id: string,
+    @Req() req,
+    @Body('status') status: StoreStatus,
+  ) {
+    const actor_role = req?.user?.systemRole;
+    return this.storesService.activate(this.validateId(id), actor_role ,status );
+  }
 
   // // Deactivate Store
   // @Patch(':id/deactivate')

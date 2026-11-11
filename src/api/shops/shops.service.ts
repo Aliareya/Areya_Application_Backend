@@ -73,7 +73,7 @@ export class ShopsService {
     });
 
     if (!store) {
-      throw new NotFoundException('فروشگاه پیدا نشد یا شما مالک آن نیستید.');
+      throw new NotFoundException('فروشگاه پیدا نشد');
     }
 
     return store;

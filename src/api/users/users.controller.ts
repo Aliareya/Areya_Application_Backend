@@ -22,6 +22,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
 import { SystemRole } from './entities/user.entity';
 import { AssignUserRoleDto } from './dto/assign-user-role.dto';
+import { CreateShopUserDto } from './dto/create-shop-employee.dto';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -37,6 +38,23 @@ export class UsersController {
   @Post()
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
+  }
+
+  @Post('shops/:shopId/employees')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.OWNER)
+  createShopEmployee(
+    @Req() req: AuthenticatedRequest,
+    @Param('shopId') shopId: string,
+    @Body() dto: CreateShopUserDto,
+  ) {
+    console.log('[CREATE SHOP EMPLOYEE] Controller reached');
+    console.log('Actor ID:', req.user?.id);
+    console.log('Shop ID:', shopId);
+    console.log('System Role:', dto.systemRole);
+    console.log('Role ID:', dto.roleId);
+
+    return this.usersService.createShopEmployee(req.user.id, shopId, dto);
   }
 
   @Get()
@@ -86,5 +104,4 @@ export class UsersController {
   ) {
     return this.usersService.getEmployeeRole(req.user.id, shopId, userId);
   }
-  
 }
