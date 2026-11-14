@@ -9,10 +9,10 @@ import {
 } from '@nestjs/common';
 
 import { PermissionsService } from './permissions.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorator/roles.decorator';
 import { SystemRole } from '../users/entities/user.entity';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('permissions')
 @UseGuards(JwtAuthGuard, RolesGuard)

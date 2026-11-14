@@ -23,6 +23,7 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { AssignUserRoleDto } from './dto/assign-user-role.dto';
 import { Store } from '../stores/entities/store.entity';
 import { CreateShopUserDto } from './dto/create-shop-employee.dto';
+import { AccessControlService } from '../../common/access-control/access-control.service';
 
 @Injectable()
 export class UsersService {
@@ -32,6 +33,7 @@ export class UsersService {
     private readonly dataSource: DataSource,
     @InjectRepository(UserRole)
     private readonly userRoleRepository: Repository<UserRole>,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
@@ -134,8 +136,48 @@ export class UsersService {
     return `This action returns all users`;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findOne(id: string, actor_id: string) {
+    await this.accessControlService.validateUserAccess(actor_id, id);
+
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: {
+        shop:true,
+        userRoles: {
+          role: {
+            rolePermissions: {
+              permission: true,
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('کاربر پیدا نشد');
+    }
+
+    return {
+      ...user,
+
+      userRoles: user.userRoles.map((userRole) => ({
+        ...userRole,
+
+        role: {
+          ...userRole.role,
+
+          permissions: userRole.role.rolePermissions.map((rolePermission) => ({
+            id: rolePermission.permission.id,
+            name: rolePermission.permission.name,
+            slug: rolePermission.permission.slug,
+            description: rolePermission.permission.description,
+            createdAt: rolePermission.permission.createdAt,
+          })),
+
+          rolePermissions: undefined,
+        },
+      })),
+    };
   }
 
   update(id: number, updateUserDto: UpdateUserDto) {
@@ -356,10 +398,9 @@ export class UsersService {
       throw new BadRequestException('شناسه کاربر معتبر نیست.');
     }
 
+    // 1. دریافت اطلاعات کاربر
     const user = await this.userRepository.findOne({
-      where: {
-        id: userId,
-      },
+      where: { id: userId },
     });
 
     if (!user) {
@@ -370,74 +411,111 @@ export class UsersService {
       throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
     }
 
-    let role: any = null;
-    let permissions: any[] = [];
+    let role: {
+      id: string;
+      name: string;
+      description: string | null;
+      shopId: string;
+    } | null = null;
 
-    let userRole: any = null;
+    let permissions: {
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+    }[] = [];
 
-    if (
+    let userShop: Shop | null = null;
+    let userStore: Store | null = null;
+
+    const isShopUser =
       user.systemRole === SystemRole.EMPLOYEE ||
-      user.systemRole === SystemRole.STUDENT
-    ) {
-      userRole = await this.userRoleRepository.findOne({
+      user.systemRole === SystemRole.STUDENT;
+
+    // 2. بررسی دسترسی کاربران وابسته به دکان
+    if (isShopUser) {
+      if (!user.shopId) {
+        throw new ForbiddenException(
+          'حساب کاربری شما به هیچ دکانی اختصاص داده نشده است.',
+        );
+      }
+
+      // دریافت نقش فقط از دکان خود کاربر
+      const userRole = await this.userRoleRepository.findOne({
         where: {
           userId: user.id,
+          shopId: user.shopId,
         },
         relations: {
           role: true,
         },
       });
 
-      if (userRole) {
-        role = {
-          id: userRole.role.id,
-          name: userRole.role.name,
-          description: userRole.role.description,
-          shopId: userRole.shopId,
-        };
-
-        const rolePermissions = await this.dataSource
-          .getRepository(Role)
-          .createQueryBuilder('role')
-          .leftJoinAndSelect('role.rolePermissions', 'rolePermission')
-          .leftJoinAndSelect('rolePermission.permission', 'permission')
-          .where('role.id = :roleId', {
-            roleId: userRole.roleId,
-          })
-          .getOne();
-
-        permissions =
-          rolePermissions?.rolePermissions?.map((item) => ({
-            id: item.permission.id,
-            name: item.permission.name,
-            slug: item.permission.slug,
-            description: item.permission.description,
-          })) ?? [];
+      if (!userRole || !userRole.role) {
+        throw new ForbiddenException(
+          'برای حساب کاربری شما هیچ نقشی تعیین نشده است.',
+        );
       }
+
+      // بررسی تطابق دکان کاربر، رکورد UserRole و Role
+      if (
+        userRole.shopId !== user.shopId ||
+        userRole.role.shopId !== user.shopId
+      ) {
+        throw new ForbiddenException('ارتباط نقش و دکان کاربر معتبر نیست.');
+      }
+
+      role = {
+        id: userRole.role.id,
+        name: userRole.role.name,
+        description: userRole.role.description,
+        shopId: userRole.shopId,
+      };
+
+      // دریافت Permissionها فقط از نقش معتبر همان دکان
+      const rolePermissions = await this.dataSource
+        .getRepository(Role)
+        .createQueryBuilder('role')
+        .innerJoinAndSelect('role.rolePermissions', 'rolePermission')
+        .innerJoinAndSelect('rolePermission.permission', 'permission')
+        .where('role.id = :roleId', {
+          roleId: userRole.roleId,
+        })
+        .andWhere('role.shopId = :shopId', {
+          shopId: user.shopId,
+        })
+        .orderBy('permission.id', 'ASC')
+        .getOne();
+
+      permissions =
+        rolePermissions?.rolePermissions?.map((item) => ({
+          id: item.permission.id,
+          name: item.permission.name,
+          slug: item.permission.slug,
+          description: item.permission.description,
+        })) ?? [];
+
+      // 3. دریافت دکان متعلق به کاربر
+      userShop = await this.dataSource.getRepository(Shop).findOne({
+        where: {
+          id: user.shopId,
+        },
+        relations: {
+          store: true,
+        },
+      });
+
+      if (!userShop || !userShop.store) {
+        throw new ForbiddenException(
+          'دکان یا فروشگاه مربوط به حساب کاربری پیدا نشد.',
+        );
+      }
+
+      userStore = userShop.store;
     }
 
-    let userStore: Store | null = null;
-    let userShop: Shop | null = null;
-
-    if (
-      user.systemRole === SystemRole.EMPLOYEE ||
-      user.systemRole === SystemRole.STUDENT
-    ) {
-      const employeeShopId = user.shopId ?? userRole?.shopId ?? null;
-
-      if (employeeShopId) {
-        userShop = await this.dataSource.getRepository(Shop).findOne({
-          where: {
-            id: employeeShopId,
-          },
-          relations: {
-            store: true,
-          },
-        });
-
-        userStore = userShop?.store ?? null;
-      }
-    } else {
+    // 4. دریافت Store فقط برای مالک همان Store
+    else if (user.systemRole === SystemRole.OWNER) {
       userStore = await this.dataSource.getRepository(Store).findOne({
         where: {
           ownerId: user.id,
@@ -445,6 +523,7 @@ export class UsersService {
       });
     }
 
+    // 5. ساخت اطلاعات امن Store
     const store = userStore
       ? {
           id: userStore.id,
@@ -459,6 +538,7 @@ export class UsersService {
         }
       : null;
 
+    // 6. ساخت اطلاعات امن Shop
     const shop = userShop
       ? {
           id: userShop.id,
@@ -471,6 +551,7 @@ export class UsersService {
         }
       : null;
 
+    // 7. اطلاعات امن کاربر
     const safeUser = {
       id: user.id,
       fullName: user.fullName,
@@ -478,10 +559,7 @@ export class UsersService {
       email: user.email,
       systemRole: user.systemRole,
 
-      shopId:
-        user.systemRole === SystemRole.EMPLOYEE
-          ? (user.shopId ?? userRole?.shopId ?? null)
-          : user.shopId,
+      shopId: isShopUser ? user.shopId : null,
 
       isActive: user.isActive,
       store,

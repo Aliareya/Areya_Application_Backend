@@ -17,12 +17,13 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
 import { SystemRole } from './entities/user.entity';
 import { AssignUserRoleDto } from './dto/assign-user-role.dto';
 import { CreateShopUserDto } from './dto/create-shop-employee.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Permissions } from 'src/common/decorator/permissions.decorator';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -48,12 +49,6 @@ export class UsersController {
     @Param('shopId') shopId: string,
     @Body() dto: CreateShopUserDto,
   ) {
-    console.log('[CREATE SHOP EMPLOYEE] Controller reached');
-    console.log('Actor ID:', req.user?.id);
-    console.log('Shop ID:', shopId);
-    console.log('System Role:', dto.systemRole);
-    console.log('Role ID:', dto.roleId);
-
     return this.usersService.createShopEmployee(req.user.id, shopId, dto);
   }
 
@@ -63,8 +58,17 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.OWNER,
+    SystemRole.EMPLOYEE,
+    SystemRole.STUDENT,
+    SystemRole.USER,
+    SystemRole.SUPER_ADMIN,
+  )
+  @Permissions('profile.read')
+  findOne(@Param('id') id: string , @Req() req) {
+    return this.usersService.findOne(id , req.user.id);
   }
 
   @Patch(':id')

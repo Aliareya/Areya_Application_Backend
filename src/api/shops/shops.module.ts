@@ -9,6 +9,7 @@ import { Shop } from './entities/shop.entity';
 import { Store } from '../stores/entities/store.entity';
 
 import { CloudinaryModule } from '../../cloudinary/cloudinary.module';
+import { AccessControlModule } from '../../common/access-control/access-control.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CloudinaryModule } from '../../cloudinary/cloudinary.module';
       Store,
     ]),
     CloudinaryModule,
+    AccessControlModule 
   ],
   controllers: [ShopsController],
   providers: [ShopsService],

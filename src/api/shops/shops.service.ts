@@ -21,6 +21,7 @@ import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 
 import { CloudinaryService } from '../../cloudinary/cloudinary.service';
+import { AccessControlService } from '../../common/access-control/access-control.service';
 
 @Injectable()
 export class ShopsService {
@@ -32,6 +33,7 @@ export class ShopsService {
     private readonly storeRepository: Repository<Store>,
 
     private readonly cloudinaryService: CloudinaryService,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   // Validate BIGINT IDs.
@@ -161,12 +163,69 @@ export class ShopsService {
   }
 
   // Get one shop.
-  async findOne(ownerId: string, storeId: string, id: string): Promise<Shop> {
-    await this.getOwnedStore(ownerId, storeId);
-    this.validateId(id);
+  async findOne(
+    userId: string,
+    storeId: string,
+    shopId: string,
+  ): Promise<Shop> {
+    await this.accessControlService.validateStoreShopAccess(
+      userId,
+      storeId,
+      shopId,
+    );
+    this.validateId(shopId);
 
     const shop = await this.shopRepository.findOne({
-      where: { id, storeId },
+      where: { id: shopId, storeId },
+      relations: {
+        store: true,
+        users: true,
+        roles: true,
+      },
+      select: {
+        id: true,
+        storeId: true,
+        name: true,
+        slug: true,
+        phone: true,
+        address: true,
+        logo: true,
+        logoPublicId: true,
+        status: true,
+        store: {
+          id: true,
+          ownerId: true,
+          name: true,
+          slug: true,
+          phone: true,
+          address: true,
+          logo: true,
+          status: true,
+        },
+
+        users: {
+          id: true,
+          fullName: true,
+          phone: true,
+          email: true,
+          systemRole: true,
+          shopId: true,
+          isActive: true,
+          avatar: true,
+          lastLoginAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+
+        roles: {
+          id: true,
+          shopId: true,
+          name: true,
+          slug: true,
+          description: true,
+          createdAt: true,
+        },
+      },
     });
 
     if (!shop) {

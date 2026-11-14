@@ -10,6 +10,7 @@ import { UserRole } from './entities/user-role.entity';
 
 import { Role } from '../roles/entities/role.entity';
 import { Shop } from '../shops/entities/shop.entity';
+import { AccessControlModule } from '../../common/access-control/access-control.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { Shop } from '../shops/entities/shop.entity';
       Role,
       Shop,
     ]),
+    AccessControlModule
   ],
   controllers: [UsersController],
   providers: [UsersService],
