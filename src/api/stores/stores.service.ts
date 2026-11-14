@@ -18,6 +18,7 @@ import { User, SystemRole } from '../users/entities/user.entity';
 
 import { CreateStoreDto } from './dto/create-store.dto';
 import { CloudinaryService } from '../../cloudinary/cloudinary.service';
+import { UpdateStoreDto } from './dto/update-store.dto';
 
 interface AuthenticatedRequest {
   user?: {
@@ -229,7 +230,7 @@ export class StoresService {
       relations: {
         owner: true,
         shops: {
-          users:true
+          users: true,
         },
       },
       select: {
@@ -247,8 +248,8 @@ export class StoresService {
         owner: {
           id: true,
           fullName: true,
-          phone:true,
-          email:true
+          phone: true,
+          email: true,
         },
       },
     });
@@ -304,5 +305,166 @@ export class StoresService {
     store.status = status;
 
     return storeRepository.save(store);
+  }
+
+  // Update Store
+  async update(
+    storeId: string,
+    ownerId: string,
+    updateStoreDto: UpdateStoreDto,
+    file?: Express.Multer.File,
+  ) {
+    this.validateId(storeId);
+    this.validateId(ownerId);
+
+    // Prevent empty update requests
+    const hasDtoChanges = Object.values(updateStoreDto).some(
+      (value) => value !== undefined,
+    );
+
+    if (!hasDtoChanges && !file) {
+      throw new BadRequestException(
+        'لطفاً حداقل یک مورد برای ویرایش انتخاب کنید.',
+      );
+    }
+
+    let uploadedLogo: {
+      url: string;
+      publicId: string;
+    } | null = null;
+
+    const existingStore = await this.dataSource.getRepository(Store).findOne({
+      where: { id: storeId },
+      select: {
+        id: true,
+        ownerId: true,
+      },
+    });
+
+    if (!existingStore) {
+      throw new NotFoundException('فروشگاه مورد نظر پیدا نشد.');
+    }
+
+    if (existingStore.ownerId !== ownerId) {
+      throw new ForbiddenException('شما اجازه ویرایش این فروشگاه را ندارید.');
+    }
+
+    try {
+      // Upload new logo before database transaction
+      if (file) {
+        uploadedLogo = await this.cloudinaryService.uploadFile(file);
+      }
+
+      // Update database transaction
+      const result = await this.dataSource.transaction(async (manager) => {
+        const storeRepository = manager.getRepository(Store);
+
+        // Lock store row to prevent concurrent updates
+        const store = await storeRepository.findOne({
+          where: { id: storeId },
+          lock: {
+            mode: 'pessimistic_write',
+          },
+        });
+
+        if (!store) {
+          throw new NotFoundException('فروشگاه مورد نظر پیدا نشد.');
+        }
+
+        // Verify ownership
+        if (store.ownerId !== ownerId) {
+          throw new ForbiddenException(
+            'شما اجازه ویرایش این فروشگاه را ندارید.',
+          );
+        }
+
+        // Check slug uniqueness
+        if (updateStoreDto.slug !== undefined) {
+          const normalizedSlug = updateStoreDto.slug.trim().toLowerCase();
+
+          const existingSlug = await storeRepository.findOne({
+            where: {
+              slug: normalizedSlug,
+            },
+          });
+
+          if (existingSlug && existingSlug.id !== store.id) {
+            throw new ConflictException(
+              'این شناسه قبلاً برای فروشگاه دیگری استفاده شده است.',
+            );
+          }
+
+          store.slug = normalizedSlug;
+        }
+
+        // Update store information
+        if (updateStoreDto.name !== undefined) {
+          store.name = updateStoreDto.name.trim();
+        }
+
+        if (updateStoreDto.phone !== undefined) {
+          store.phone = updateStoreDto.phone?.trim() || null;
+        }
+
+        if (updateStoreDto.address !== undefined) {
+          store.address = updateStoreDto.address?.trim() || null;
+        }
+
+        // Preserve old logo information
+        const oldLogoPublicId = store.logoPublicId;
+
+        // Replace logo if a new file exists
+        if (uploadedLogo) {
+          store.logo = uploadedLogo.url;
+          store.logoPublicId = uploadedLogo.publicId;
+        }
+
+        const savedStore = await storeRepository.save(store);
+
+        return {
+          store: savedStore,
+          oldLogoPublicId: uploadedLogo ? oldLogoPublicId : null,
+        };
+      });
+
+      // Remove old logo only after successful database commit
+      if (result.oldLogoPublicId) {
+        try {
+          await this.cloudinaryService.removeImage(result.oldLogoPublicId);
+        } catch {
+          // Database update succeeded.
+          // Keep the operation successful if Cloudinary cleanup fails.
+        }
+      }
+
+      return {
+        success: true,
+        message: 'اطلاعات فروشگاه با موفقیت ویرایش شد.',
+        store: result.store,
+      };
+    } catch (error) {
+      // Remove newly uploaded logo if database update fails
+      if (uploadedLogo) {
+        try {
+          await this.cloudinaryService.removeImage(uploadedLogo.publicId);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+
+      // Handle PostgreSQL unique constraint violations
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === '23505'
+      ) {
+        throw new ConflictException(
+          'این شناسه یا اطلاعات فروشگاه قبلاً ثبت شده است.',
+        );
+      }
+
+      throw error;
+    }
   }
 }

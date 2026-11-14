@@ -20,13 +20,13 @@ import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
 
 import { SystemRole } from '../users/entities/user.entity';
 import { AuthenticatedRequest } from '../../common/interfaces/authenticated-request.interface';
 import { StoreStatus } from './entities/store.entity';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @Controller('stores')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -91,10 +91,41 @@ export class StoresController {
   }
 
   // Update Store
-  // @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
-  //   return this.storesService.update(this.validateId(id), updateStoreDto);
-  // }
+  @Patch(':id')
+  @Roles(SystemRole.OWNER)
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 2 * 1024 * 1024,
+      },
+      fileFilter: (req, file, callback) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+          return callback(
+            new BadRequestException('فرمت تصویر باید JPG، PNG یا WEBP باشد.'),
+            false,
+          );
+        }
+
+        callback(null, true);
+      },
+    }),
+  )
+  update(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Body() updateStoreDto: UpdateStoreDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.storesService.update(
+      this.validateId(id),
+      this.validateId(req.user.id),
+      updateStoreDto,
+      file,
+    );
+  }
 
   // Activate Store
   @Patch(':id/activate')
@@ -104,7 +135,7 @@ export class StoresController {
     @Body('status') status: StoreStatus,
   ) {
     const actor_role = req?.user?.systemRole;
-    return this.storesService.activate(this.validateId(id), actor_role ,status );
+    return this.storesService.activate(this.validateId(id), actor_role, status);
   }
 
   // // Deactivate Store

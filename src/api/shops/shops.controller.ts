@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Get,
@@ -24,21 +23,21 @@ import { ShopsService } from './shops.service';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SystemRole, User } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from 'src/common/decorator/roles.decorator';
+import { Roles } from '../../common/decorator/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorator/permissions.decorator';
 
 interface AuthenticatedRequest extends Request {
   user: User;
 }
 
 @Controller('stores/:storeId/shops')
-@UseGuards(JwtAuthGuard , RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ShopsController {
-  constructor(
-    private readonly shopsService: ShopsService,
-  ) {}
+  constructor(private readonly shopsService: ShopsService) {}
 
   private validateId(id: string): string {
     if (!/^[1-9]\d*$/.test(id)) {
@@ -88,17 +87,18 @@ export class ShopsController {
 
   // Get all shops
   @Get()
-  findAll(
-    @Req() req: AuthenticatedRequest,
-    @Param('storeId') storeId: string,
-  ) {
-    return this.shopsService.findAll(
-      req.user.id,
-      this.validateId(storeId),
-    );
+  findAll(@Req() req: AuthenticatedRequest, @Param('storeId') storeId: string) {
+    return this.shopsService.findAll(req.user.id, this.validateId(storeId));
   }
 
   // Get one shop
+  @Roles(
+    SystemRole.SUPER_ADMIN,
+    SystemRole.OWNER,
+    SystemRole.EMPLOYEE,
+    SystemRole.STUDENT,
+  )
+  @Permissions('purchases.read')
   @Get(':id')
   findOne(
     @Req() req: AuthenticatedRequest,

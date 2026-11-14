@@ -17,12 +17,12 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 import { User, SystemRole } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
 import { AssignRolePermissionsDto } from './dto/assign-role-permissions.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 interface AuthenticatedRequest extends Request {
   user: User;
