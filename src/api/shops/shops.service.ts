@@ -263,7 +263,6 @@ export class ShopsService {
 
       shop.name = normalizedName;
       shop.normalizedName = normalizedName;
-      shop.slug = this.generateSlug(normalizedName, shop.id);
     }
 
     if (updateShopDto.phone !== undefined) {

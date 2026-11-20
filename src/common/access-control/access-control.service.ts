@@ -237,4 +237,27 @@ export class AccessControlService {
       'شما اجازه دسترسی به پروفایل این کاربر را ندارید',
     );
   }
+
+  async validateStoreAccess() {}
+
+  async validateShopAccess(userId: string, shopId: string) {
+    if (!/^[1-9]\d*$/.test(userId) || !/^[1-9]\d*$/.test(shopId)) {
+      throw new BadRequestException('شناسه واردشده معتبر نیست.');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'systemRole', 'shopId', 'isActive'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('کاربر یافت نشد.');
+    }
+
+    if (!user.isActive) {
+      throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
+    }
+  }
+
+  async;
 }
