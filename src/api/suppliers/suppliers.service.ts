@@ -13,6 +13,7 @@ import { Shop } from '../shops/entities/shop.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { AccessControlService } from 'src/common/access-control/access-control.service';
 import { generateSupplierCode } from '../../common/helpers/helpersFuntions';
+import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
 @Injectable()
 export class SuppliersService {
@@ -32,12 +33,8 @@ export class SuppliersService {
     shopID: string,
     dto: CreateSupplierDto,
   ): Promise<Supplier> {
-    // 1. Validate user access to shop
     await this.accessControlService.validateUserShopAccess(userID, shopID);
-
-    // 3. Generate supplier code
     let code: string;
-
     do {
       code = generateSupplierCode();
     } while (
@@ -72,4 +69,48 @@ export class SuppliersService {
       },
     });
   }
+
+  async findOne(userID: string, shopID: string, supplierID: string) {
+    await this.accessControlService.validateUserShopAccess(userID, shopID);
+    const supplier = await this.supplierRepository.findOne({
+      where: {
+        id: supplierID,
+        shopId: shopID,
+      },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException('این تامین کننده در این دکان وجود ندارد ');
+    }
+    return supplier;
+  }
+
+  async update(
+    userID: string,
+    shopID: string,
+    supplierID: string,
+    DTO: UpdateSupplierDto,
+  ) {
+    await this.accessControlService.validateUserShopAccess(userID, shopID);
+
+    const supplier = await this.supplierRepository.findOne({
+      where: {
+        id: supplierID,
+        shopId: shopID,
+      },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException('تأمین‌کننده مورد نظر پیدا نشد.');
+    }
+
+    supplier.name = DTO.name ?? supplier.name;
+    supplier.address = DTO.address ?? supplier.address;
+    supplier.phone = DTO.phone ?? supplier.phone;
+    supplier.description = DTO.description ?? supplier.description;
+    supplier.isActive = DTO.isActive ?? supplier.isActive;
+
+    return await this.supplierRepository.save(supplier);
+  }
+
 }

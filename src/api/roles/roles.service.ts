@@ -61,12 +61,6 @@ export class RolesService {
       throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
     }
 
-    if (user.systemRole !== SystemRole.OWNER) {
-      throw new ForbiddenException(
-        'فقط مالک فروشگاه اجازه مدیریت نقش‌ها را دارد.',
-      );
-    }
-
     const shop = await this.shopRepository.findOne({
       where: { id: shopId },
       relations: {

@@ -271,14 +271,6 @@ export class AccessControlService {
         },
       });
 
-      console.log('ACCESS DEBUG:', {
-        userID: user.id,
-        requestedShopID: shopID,
-        role: user.systemRole,
-        shopFound: !!shop,
-        shopStoreOwnerID: shop?.store?.ownerId,
-      });
-
       if (
         !shop ||
         !shop.store ||
