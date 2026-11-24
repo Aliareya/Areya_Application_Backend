@@ -113,69 +113,73 @@ export class ShopsController {
   }
 
   // Update shop
-  @Patch(':id')
-  @UseInterceptors(
-    FileInterceptor('logo', {
-      storage: memoryStorage(),
-      limits: {
-        fileSize: 2 * 1024 * 1024,
-      },
-    }),
-  )
-  update(
-    @Req() req: AuthenticatedRequest,
-    @Param('storeId') storeId: string,
-    @Param('id') id: string,
-    @Body() updateShopDto: UpdateShopDto,
-    @UploadedFile(
-      new ParseFilePipe({
-        fileIsRequired: false,
-        validators: [
-          new MaxFileSizeValidator({
-            maxSize: 2 * 1024 * 1024,
-          }),
-          new FileTypeValidator({
-            fileType: /^image\/(jpeg|png|webp)$/,
-          }),
-        ],
-      }),
-    )
-    file?: Express.Multer.File,
-  ) {
-    return this.shopsService.update(
-      req.user.id,
-      this.validateId(storeId),
-      this.validateId(id),
-      updateShopDto,
-      file,
-    );
-  }
+  // @Patch(':id')
+  // @UseInterceptors(
+  //   FileInterceptor('logo', {
+  //     storage: memoryStorage(),
+  //     limits: {
+  //       fileSize: 2 * 1024 * 1024,
+  //     },
+  //   }),
+  // )
+  // update(
+  //   @Req() req: AuthenticatedRequest,
+  //   @Param('storeId') storeId: string,
+  //   @Param('id') id: string,
+  //   @Body() updateShopDto: UpdateShopDto,
+  //   @UploadedFile(
+  //     new ParseFilePipe({
+  //       fileIsRequired: false,
+  //       validators: [
+  //         new MaxFileSizeValidator({
+  //           maxSize: 2 * 1024 * 1024,
+  //         }),
+  //         new FileTypeValidator({
+  //           fileType: /^image\/(jpeg|png|webp)$/,
+  //         }),
+  //       ],
+  //     }),
+  //   )
+  //   file?: Express.Multer.File,
+  // ) {
+  //   return this.shopsService.update(
+  //     req.user.id,
+  //     this.validateId(storeId),
+  //     this.validateId(id),
+  //     updateShopDto,
+  //     file,
+  //   );
+  // }
 
   // Activate shop
-  @Patch(':id/activate')
-  activate(
-    @Req() req: AuthenticatedRequest,
-    @Param('storeId') storeId: string,
-    @Param('id') id: string,
-  ) {
-    return this.shopsService.activate(
-      req.user.id,
-      this.validateId(storeId),
-      this.validateId(id),
-    );
-  }
+  // @Patch(':id/activate')
+  // activate(
+  //   @Req() req: AuthenticatedRequest,
+  //   @Param('storeId') storeId: string,
+  //   @Param('id') id: string,
+  // ) {
+  //   return this.shopsService.activate(
+  //     req.user.id,
+  //     this.validateId(storeId),
+  //     this.validateId(id),
+  //   );
+  // }
 
   // Deactivate shop
-  @Patch(':id/deactivate')
-  deactivate(
-    @Req() req: AuthenticatedRequest,
-    @Param('storeId') storeId: string,
-    @Param('id') id: string,
-  ) {
-    return this.shopsService.deactivate(
-      req.user.id,
-      this.validateId(storeId),
-      this.validateId(id),
-    );
-  }
+  // @Patch(':id/deactivate')
+  // deactivate(
+  //   @Req() req: AuthenticatedRequest,
+  //   @Param('storeId') storeId: string,
+  //   @Param('id') id: string,
+  // ) {
+  //   return this.shopsService.deactivate(
+  //     req.user.id,
+  //     this.validateId(storeId),
+  //     this.validateId(id),
+  //   );
+  // }
 }
+
+
+
+

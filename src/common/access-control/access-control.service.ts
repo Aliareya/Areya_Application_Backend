@@ -237,4 +237,56 @@ export class AccessControlService {
       'شما اجازه دسترسی به پروفایل این کاربر را ندارید',
     );
   }
+
+  async validateStoreAccess() {}
+
+  // this functions check the valide user for shop
+  async validateUserShopAccess(
+    userID: string,
+    shopID: string,
+  ): Promise<boolean> {
+    if (!/^[1-9]\d*$/.test(userID) || !/^[1-9]\d*$/.test(shopID)) {
+      throw new BadRequestException('شناسه واردشده معتبر نیست.');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: userID },
+      select: ['id', 'systemRole', 'shopId', 'isActive'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('کاربر یافت نشد.');
+    }
+
+    if (!user.isActive) {
+      throw new ForbiddenException('حساب کاربری شما غیرفعال است.');
+    }
+
+    // OWNER
+    if (user.systemRole === SystemRole.OWNER) {
+      const shop = await this.shopRepository.findOne({
+        where: { id: shopID },
+        relations: {
+          store: true,
+        },
+      });
+
+      if (
+        !shop ||
+        !shop.store ||
+        Number(shop.store.ownerId) !== Number(user.id)
+      ) {
+        throw new ForbiddenException('شما به این دکان دسترسی ندارید.');
+      }
+
+      return true;
+    }
+
+    // EMPLOYEE
+    if (Number(user.shopId) !== Number(shopID)) {
+      throw new ForbiddenException('شما به این دکان دسترسی ندارید.');
+    }
+
+    return true;
+  }
 }

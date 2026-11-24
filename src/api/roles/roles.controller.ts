@@ -17,12 +17,12 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
-
 import { User, SystemRole } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorator/roles.decorator';
 import { AssignRolePermissionsDto } from './dto/assign-role-permissions.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Permissions } from '../../common/decorator/permissions.decorator';
 
 interface AuthenticatedRequest extends Request {
   user: User;
@@ -32,7 +32,7 @@ interface AuthenticatedRequest extends Request {
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
-  
+
   // Create role
   @Roles(SystemRole.OWNER)
   @Post()
@@ -72,6 +72,8 @@ export class RolesController {
   }
 
   // Assign or replace role permissions
+  @Roles(SystemRole.OWNER, SystemRole.EMPLOYEE)
+  @Permissions('role.update')
   @Put(':id/permissions')
   assignPermissions(
     @Req() req: AuthenticatedRequest,

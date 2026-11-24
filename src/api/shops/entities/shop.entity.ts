@@ -13,6 +13,7 @@ import {
 import { Store } from '../../stores/entities/store.entity';
 import { User } from '../../users/entities/user.entity';
 import { Role } from '../../roles/entities/role.entity';
+import { Supplier } from '../../../api/suppliers/entities/supplier.entity';
 
 export enum ShopStatus {
   ACTIVE = 'active',
@@ -42,6 +43,9 @@ export class Shop {
     foreignKeyConstraintName: 'FK_shops_store',
   })
   store!: Store;
+
+  @OneToMany(() => Supplier, (supplier) => supplier.shop)
+  suppliers!: Supplier[];
 
   // Shop Name
   @Column({

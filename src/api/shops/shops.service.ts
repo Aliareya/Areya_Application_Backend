@@ -163,24 +163,33 @@ export class ShopsService {
   }
 
   // Get one shop.
-  async findOne(
-    userId: string,
-    storeId: string,
-    shopId: string,
-  ): Promise<Shop> {
+  async findOne(userId: string, storeId: string, shopId: string) {
+    // 1. Validate IDs
+    this.validateId(storeId);
+    this.validateId(shopId);
+
+    // 2. Validate access
     await this.accessControlService.validateStoreShopAccess(
       userId,
       storeId,
       shopId,
     );
-    this.validateId(shopId);
 
+    // 3. Find shop
     const shop = await this.shopRepository.findOne({
-      where: { id: shopId, storeId },
+      where: {
+        id: shopId,
+        storeId,
+      },
       relations: {
         store: true,
         users: true,
-        roles: true,
+        roles: {
+          rolePermissions: {
+            permission: true,
+          },
+        },
+        suppliers: true,
       },
       select: {
         id: true,
@@ -192,6 +201,7 @@ export class ShopsService {
         logo: true,
         logoPublicId: true,
         status: true,
+
         store: {
           id: true,
           ownerId: true,
@@ -228,108 +238,124 @@ export class ShopsService {
       },
     });
 
+    // 4. Check if shop exists
     if (!shop) {
       throw new NotFoundException('دکان مورد نظر پیدا نشد.');
     }
 
-    return shop;
+    // 5. Transform roles and permissions
+    return {
+      ...shop,
+      roles: shop.roles.map((role) => ({
+        id: role.id,
+        shopId: role.shopId,
+        name: role.name,
+        slug: role.slug,
+        description: role.description,
+        createdAt: role.createdAt,
+
+        permissions: role.rolePermissions.map((rolePermission) => ({
+          id: rolePermission.permission.id,
+          name: rolePermission.permission.name,
+        })),
+      })),
+    };
   }
 
   // Update shop.
-  async update(
-    ownerId: string,
-    storeId: string,
-    id: string,
-    updateShopDto: UpdateShopDto,
-    file?: Express.Multer.File,
-  ): Promise<Shop> {
-    const store = await this.getOwnedStore(ownerId, storeId);
-    this.checkStoreStatus(store);
+  // async update(
+  //   ownerId: string,
+  //   storeId: string,
+  //   id: string,
+  //   updateShopDto: UpdateShopDto,
+  //   file?: Express.Multer.File,
+  // ): Promise<Shop> {
+  //   const store = await this.getOwnedStore(ownerId, storeId);
+  //   this.checkStoreStatus(store);
 
-    const shop = await this.findOne(ownerId, storeId, id);
+  //   const shop = await this.findOne(ownerId, storeId, id);
 
-    if (Object.keys(updateShopDto).length === 0 && !file) {
-      throw new BadRequestException(
-        'حداقل یک فیلد یا تصویر برای ویرایش وارد کنید.',
-      );
-    }
+  //   if (Object.keys(updateShopDto).length === 0 && !file) {
+  //     throw new BadRequestException(
+  //       'حداقل یک فیلد یا تصویر برای ویرایش وارد کنید.',
+  //     );
+  //   }
 
-    if (updateShopDto.name !== undefined) {
-      const normalizedName = this.normalizeName(updateShopDto.name);
+  //   if (updateShopDto.name !== undefined) {
+  //     const normalizedName = this.normalizeName(updateShopDto.name);
 
-      if (normalizedName.length < 2) {
-        throw new BadRequestException('نام دکان معتبر نیست.');
-      }
+  //     if (normalizedName.length < 2) {
+  //       throw new BadRequestException('نام دکان معتبر نیست.');
+  //     }
 
-      shop.name = normalizedName;
-      shop.normalizedName = normalizedName;
-      shop.slug = this.generateSlug(normalizedName, shop.id);
-    }
+  //     shop.name = normalizedName;
+  //     shop.normalizedName = normalizedName;
+  //   }
 
-    if (updateShopDto.phone !== undefined) {
-      shop.phone = updateShopDto.phone?.trim() || null;
-    }
+  //   if (updateShopDto.phone !== undefined) {
+  //     shop.phone = updateShopDto.phone?.trim() || null;
+  //   }
 
-    if (updateShopDto.address !== undefined) {
-      shop.address = updateShopDto.address?.trim() || null;
-    }
+  //   if (updateShopDto.address !== undefined) {
+  //     shop.address = updateShopDto.address?.trim() || null;
+  //   }
 
-    let uploadedImage: { url: string; publicId: string } | null = null;
+  //   let uploadedImage: { url: string; publicId: string } | null = null;
 
-    try {
-      if (file) {
-        uploadedImage = await this.cloudinaryService.uploadFile(file);
-      }
+  //   try {
+  //     if (file) {
+  //       uploadedImage = await this.cloudinaryService.uploadFile(file);
+  //     }
 
-      const oldPublicId = shop.logoPublicId;
+  //     const oldPublicId = shop.logoPublicId;
 
-      if (uploadedImage) {
-        shop.logo = uploadedImage.url;
-        shop.logoPublicId = uploadedImage.publicId;
-      }
+  //     if (uploadedImage) {
+  //       shop.logo = uploadedImage.url;
+  //       shop.logoPublicId = uploadedImage.publicId;
+  //     }
 
-      const updatedShop = await this.shopRepository.save(shop);
+  //     const updatedShop = await this.shopRepository.save(shop);
 
-      if (uploadedImage && oldPublicId) {
-        try {
-          await this.cloudinaryService.removeImage(oldPublicId);
-        } catch {
-          // Database update succeeded; old image cleanup can be retried.
-        }
-      }
+  //     if (uploadedImage && oldPublicId) {
+  //       try {
+  //         await this.cloudinaryService.removeImage(oldPublicId);
+  //       } catch {
+  //         // Database update succeeded; old image cleanup can be retried.
+  //       }
+  //     }
 
-      return updatedShop;
-    } catch (error: unknown) {
-      if (uploadedImage) {
-        await this.cloudinaryService.removeImage(uploadedImage.publicId);
-      }
+  //     return updatedShop;
+  //   } catch (error: unknown) {
+  //     if (uploadedImage) {
+  //       await this.cloudinaryService.removeImage(uploadedImage.publicId);
+  //     }
 
-      this.handleDatabaseError(error);
-    }
-  }
+  //     this.handleDatabaseError(error);
+  //   }
+  // }
 
   // Activate shop.
-  async activate(ownerId: string, storeId: string, id: string): Promise<Shop> {
-    const store = await this.getOwnedStore(ownerId, storeId);
-    this.checkStoreStatus(store);
+  // async activate(ownerId: string, storeId: string, id: string): Promise<Shop> {
+  //   const store = await this.getOwnedStore(ownerId, storeId);
+  //   this.checkStoreStatus(store);
 
-    const shop = await this.findOne(ownerId, storeId, id);
+  //   const shop = await this.findOne(ownerId, storeId, id);
 
-    shop.status = ShopStatus.ACTIVE;
+  //   shop.status = ShopStatus.ACTIVE;
 
-    return this.shopRepository.save(shop);
-  }
+  //   return this.shopRepository.save(shop);
+  // }
 
-  // Deactivate shop.
-  async deactivate(
-    ownerId: string,
-    storeId: string,
-    id: string,
-  ): Promise<Shop> {
-    const shop = await this.findOne(ownerId, storeId, id);
+  // // Deactivate shop.
+  // async deactivate(
+  //   ownerId: string,
+  //   storeId: string,
+  //   id: string,
+  // ): Promise<Shop> {
+  //   const shop = await this.findOne(ownerId, storeId, id);
 
-    shop.status = ShopStatus.INACTIVE;
+  //   shop.status = ShopStatus.INACTIVE;
 
-    return this.shopRepository.save(shop);
-  }
+  //   return this.shopRepository.save(shop);
+  // }
 }
